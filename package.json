@@ -1,0 +1,8 @@
+{
+	"depends": [],
+	"description": "lnode core framework",
+	"filename": "lnode.package",
+	"name": "lnode",
+	"tags": ["lnode", "core"],
+	"version": "1.1.6"
+}
