@@ -9,13 +9,14 @@
 
 目录: /main/node.lua/deps
 
-node.lua 主程序，由 C 语言实现, 主要包含了 lua5.3, libuv, miniz 等核心库
+node.lua 主程序，由 C 语言实现, 主要包含了 lua, libuv, miniz 等核心库
 
 - (lua) PUC lua 5.3.2 以上
-- (libuv) libuv 1.8.0 以上
+- (libuv) libuv 1.9.0 以上
 - (luajson) cjson
-- miniz zip 压缩库
-- md5
+- (luazip) miniz zip 压缩库
+- (luauv)
+- (luautils) buffer, hex, http parser, md5 ...
 
 依赖库下载地址：
 
@@ -63,6 +64,8 @@ node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方�
 
 - build.lua     打包 lua 文件, 生成 lnode.zip
 - CMakeLists.txt cmake 配置文件
+- install.bat   Windows 下执行 install.lua 文件的批处理文件
+- install.lua   运行环境安装脚本
 - LICENSE       开源协议文件
 - make.bat      Windows 下 cmake 批处理文件
 - Makefile      Makefile
@@ -71,8 +74,6 @@ node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方�
 
 ### bin 目录文件
 
-- install.bat   Windows 下执行 install.lua 文件的批处理文件
-- install.lua   运行环境安装脚本
 - lpm           Lua Package Manager 执行文件
 - lpm.cmd       Windows 下执行 lpm 文件的批处理文件
 - main          lnode.zip 主程序
@@ -84,15 +85,19 @@ node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方�
 主要采用 cmake 构建和编译代码, 编译前需先安装 cmake 软件
 
 生成文件: 
-    bin/lnode
+    bin/lnode (独立执行文件)
+
+以及:
+    bin/libluanode.so (模块文件)
+    bin/lshell (依赖于 libluanode.so)
 
 #### Windows 编译
 
-先安装 cmake 和 visual studio, 然后运行 make.bat, 将成生成 build_win32 目录 
+先安装 cmake 和 visual studio, 然后运行 make.bat, 将成生成 build/win32 目录 
 
 #### 交叉编译
 
-交叉编译 hi3518，先安装 cmake 和 hi3518 工具链，然后运行 make hi3518, 将成生成 build_hi3518 目录 
+交叉编译 hi3518，先安装 cmake 和 hi3518 工具链，然后运行 make hi3518, 将成生成 build/hi3518 目录 
 
 其他平台交叉编译办法:
 
@@ -114,13 +119,13 @@ endif (BOARD_TYPE STREQUAL hi3518)
 ```
 hi3518:
 #   交叉编译
-    cmake -H. -Bbuild_hi3518 -DBOARD_TYPE=hi3518
-    cmake --build build_hi3518 --config Debug
+    cmake -H. -Bbuild/hi3518 -DBOARD_TYPE=hi3518
+    cmake --build build/hi3518 --config Debug
 ```
 
 其中 
 
-- build_hi3518 表示中间文件和目标文件生成目录 
+- build/hi3518 表示中间文件和目标文件生成目录 
 - BOARD_TYPE=hi3518 表示CMakeLists中配置的平台类型
 
 如果未指定将默认采用开发机的编译环境和工具
@@ -138,8 +143,8 @@ hi3518:
 
 ## 安装运行/调试环境
 
-运行脚本: bin/install.lua
-注: windows 下运行 bin/install.bat
+运行脚本: install.lua
+注: windows 下运行 install.bat
 
 上述脚本将复制上面生成的可执行文件到系统目录并添加需要的环境变量
 

@@ -1,6 +1,6 @@
 # Timers#
 
-## clearImmediate(immediateObject) ??? #
+## clearImmediate(immediateObject) #
 Stops an immediate from triggering.
 
 ## clearInterval(intervalObject)#
@@ -9,7 +9,7 @@ Stops an interval from triggering.
 ## clearTimeout(timeoutObject)#
 Prevents a timeout from triggering.
 
-## ref() ???#
+## ref() #
 If you had previously unref()d a timer you can call ref() to explicitly request the timer hold the program open. If the timer is already refd calling ref again will have no effect.
 
 Returns the timer.
@@ -31,7 +31,7 @@ The callback will likely not be invoked in precisely delay milliseconds. Node.js
 
 To follow browser behavior, when using delays larger than 2147483647 milliseconds (approximately 25 days) or less than 1, the timeout is executed immediately, as if the delay was set to 1.
 
-## unref() ???#
+## unref() #
 The opaque value returned by `setTimeout` and `setInterval` also has the method timer.unref() which will allow you to create a timer that is active but if it is the only item left in the event loop, it won't keep the program running. If the timer is already unrefd calling unref again will have no effect.
 
 In the case of setTimeout when you unref you create a separate timer that will wakeup the event loop, creating too many of these may adversely effect event loop performance -- use wisely.

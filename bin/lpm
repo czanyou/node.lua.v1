@@ -1,0 +1,32 @@
+#!/usr/bin/env lnode
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --  
+-- Add current lua path to package path
+
+function use_current_path()
+    local uv  = require('uv')
+    local cwd = uv.cwd()
+    
+    local lib = ';'..cwd..'/../lua/?.lua;'..cwd..'/../lua/?/init.lua'
+    package.path = package.path .. lib
+    --print(package.path)
+
+end
+
+use_current_path()
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+
+local lpm    = require('ext/lpm')
+local utils  = require('utils')
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-- Main function
+-- ~~~~~~~~~
+local function main(args)
+	local manager 	= lpm.PackageManager:new()
+	manager:call(args)
+end
+
+main(arg)
+run_loop()

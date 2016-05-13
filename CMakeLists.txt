@@ -9,6 +9,11 @@ set(LUV_VERSION_MINOR 7)
 set(LUV_VERSION_PATCH 1)
 set(LUV_VERSION       ${LUV_VERSION_MAJOR}.${LUV_VERSION_MINOR}.${LUV_VERSION_PATCH})
 
+# Add share object flags
+set(GNU_FLAGS "-fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GNU_FLAGS}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GNU_FLAGS}")
+
 ###############################################################################
 # Build Options
 
@@ -59,6 +64,11 @@ elseif (BOARD_TYPE STREQUAL hi3516c)
   MESSAGE(STATUS "Build: Use arm-hisiv100nptl-linux-gcc")
   set(CMAKE_C_COMPILER "arm-hisiv100nptl-linux-gcc")
   set(BUILD_SHARED_LIBS ON)
+  
+elseif (BOARD_TYPE STREQUAL hi3516a)
+  MESSAGE(STATUS "Build: Use arm-hisiv300-linux")
+  set(CMAKE_C_COMPILER "arm-hisiv300-linux-gcc")
+  set(BUILD_SHARED_LIBS ON)  
 
 else ()
   MESSAGE(STATUS "Build: Use local gcc")
@@ -120,8 +130,8 @@ if (BUILD_SHARED_LIBS)
   add_library(luanode SHARED src/lnode.c)
   target_link_libraries(luanode luazip luajson luautils luauv lualib)
 
-  add_executable(lshell src/main.c)
-  target_link_libraries(lshell luanode)
+  #add_executable(lshell src/main.c)
+  #target_link_libraries(lshell luanode)
 endif()
 
 ###############################################################################
@@ -135,6 +145,13 @@ endif()
 
 ###############################################################################
 # luauv
+
+if (WIN32)
+  add_definitions("/wd4819")
+  add_definitions("/wd4996")
+  add_definitions("/wd4244")
+  add_definitions("/wd4005")
+endif ()
 
 if (WIN32)
   add_definitions(-DLUA_BUILD_AS_DLL -DLUA_LIB)

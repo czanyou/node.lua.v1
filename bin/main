@@ -1,0 +1,51 @@
+#!/usr/bin/env lnode
+
+local miniz = require('miniz')
+
+local function new_zip_reader()
+	package.cpath = package.cpath .. ";E:\\newwork\\app\\?.dll"
+
+	local framework = "lnode"
+	print(package.cpath)
+
+    local filename = package.searchpath(framework, package.cpath)
+    if (not filename) then
+        return nil
+    end
+
+    local reader = miniz.new_reader(filename)
+    if (reader == nil) then
+        return
+    end
+
+    return reader
+end
+
+local function zip_reader_load(reader, path)
+    if (type(path) ~= 'string') then
+        return
+    end
+
+    local index, err = reader:locate_file(path)
+    if (not index) then
+        return
+    end
+
+    if (reader:is_directory(index)) then
+        return
+    end
+
+    local data = reader:extract(index)
+    if (not data) then
+        return
+    end
+
+    return data
+end
+
+local reader = new_zip_reader()
+print(reader)
+
+local fileData, err = zip_reader_load(reader, 'bin/lpm')
+print(#fileData, err)
+
