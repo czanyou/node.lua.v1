@@ -23,7 +23,7 @@ limitations under the License.
 --]]
 
 local Transform = require('stream/stream_transform').Transform
-local Readable = require('stream/stream_readable').Readable
+local Readable  = require('stream/stream_readable').Readable
 
 local Observable = Transform:extend()
 

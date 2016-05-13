@@ -20,20 +20,16 @@ local core  = require('core')
 local timer = require('timer')
 
 local Stream = require('stream/stream_core').Stream
-local Error = core.Error
-
-local onwrite, writeAfterEnd, validChunk, writeOrBuffer, clearBuffer,
-decodeChunk, doWrite, onwriteError, onwriteStateUpdate, needFinish,
-afterWrite, finishMaybe, onwriteDrain, endWritable, prefinish
+local Error  = core.Error
 
 ---============================================================================
---- WriteReq
+--- WriteRequest
 
 local WriteReq = core.Object:extend()
 
-function WriteReq:initialize(chunk, cb)
-    self.chunk = chunk
-    self.callback = cb
+function WriteReq:initialize(chunk, callback)
+    self.chunk    = chunk
+    self.callback = callback
 end
 
 ---============================================================================
@@ -68,34 +64,16 @@ function WritableState:initialize(options, stream)
     end
     self.highWaterMark = hwm or defaultHwm
 
-    --[[
-  // cast to ints.
-  this.highWaterMark = ~~this.highWaterMark
-  --]]
     self.needDrain = false
 
-    --[[
-  // at the start of calling end()
-  --]]
+    -- at the start of calling end()
     self.ending = false
 
-    --[[
-  // when end() has been called, and returned
-  --]]
+    -- when end() has been called, and returned
     self.ended = false
 
-    --[[
-  // when 'finish' is emitted
-  --]]
+    -- when 'finish' is emitted
     self.finished = false
-
-    --[[
-  // should we decode strings into buffers before passing to _write?
-  // this is here so that some node-core streams can optimize string
-  // handling at a lower level.
-  local noDecode = options.decodeStrings == false
-  self.decodeStrings = not noDecode
-  --]]
 
     --[[
   // not an actual buffer we keep track of, but a measurement
@@ -104,14 +82,10 @@ function WritableState:initialize(options, stream)
   --]]
     self.length = 0
 
-    --[[
-  // a flag to see when we're in the middle of a write.
-  --]]
+    -- a flag to see when we're in the middle of a write.
     self.writing = false
 
-    --[[
-  // when true all writes will be buffered until .uncork() call
-  --]]
+    -- when true all writes will be buffered until .uncork() call
     self.corked = 0
 
     --[[
@@ -132,8 +106,8 @@ function WritableState:initialize(options, stream)
     --[[
   // the callback that's passed to _write(chunk,cb)
   --]]
-    self.onwrite = function(er)
-        onwrite(stream, er)
+    self.onwrite = function(err)
+        stream:_onWriteCompleted(err)
     end
 
     --[[
@@ -146,6 +120,7 @@ function WritableState:initialize(options, stream)
   --]]
     self.writelen = 0
 
+    -- buffer
     self.buffer = { }
 
     --[[
@@ -160,9 +135,7 @@ function WritableState:initialize(options, stream)
   --]]
     self.prefinished = false
 
-    --[[
-  // True if the error was already emitted and should not be thrown again
-  --]]
+    -- True if the error was already emitted and should not be thrown again
     self.errorEmitted = false
 end
 
@@ -186,7 +159,7 @@ function Writable:initialize(options)
 
     self._writableState = WritableState:new(options, self)
 
-    if type(Stream.initialize) == 'function' then
+    if (type(Stream.initialize) == 'function') then
         Stream.initialize(self)
     end
 end
@@ -198,55 +171,32 @@ function Writable:pipe()
     self:emit('error', Error:new('Cannot pipe. Not readable.'))
 end
 
-
-function writeAfterEnd(stream, state, cb)
-    local er = Error:new('write after end')
-    --[[
-  // TODO: defer error events consistently everywhere, not just the cb
-  --]]
-    stream:emit('error', er)
-    timer.setImmediate( function()
-        cb(er)
-    end )
-end
-
 --[[
-// If we get something that is not a buffer, string, null, or undefined,
-// and we're not in objectMode, then that's an error.
-// Otherwise stream chunks are all considered to be of length=1, and the
-// watermarks determine how many objects to keep in the buffer, rather than
-// how many bytes or characters.
---]]
-function validChunk(stream, state, chunk, cb)
-    local valid = true
-    if chunk ~= nil and type(chunk) ~= 'string' and not state.objectMode then
-        local er = Error:new('Invalid non-string/buffer chunk')
-        stream:emit('error', er)
-        timer.setImmediate(function()
-            cb(er)
-        end )
-        valid = false
-    end
-    return valid
-end
 
-function Writable:write(chunk, cb)
+  返回 true, 表示还可以继续写数据, 返回 false 表示缓存队列已满, 
+  最好等待 'drain' 事件再写.
+]]
+function Writable:write(chunk, callback)
     local state = self._writableState
     local ret = false
 
-    if type(cb) ~= 'function' then
-        cb = function() end
+    if type(callback) ~= 'function' then
+        callback = function() end
     end
 
     if state.ended then
-        writeAfterEnd(self, state, cb)
+        self:_writeAfterEnd(state, callback)
 
-    elseif validChunk(self, state, chunk, cb) then
+    elseif self:_isValidChunk(state, chunk, callback) then
         state.pendingcb = state.pendingcb + 1
-        ret = writeOrBuffer(self, state, chunk, cb)
+        ret = self:_writeOrBuffer(state, chunk, callback)
     end
 
     return ret
+end
+
+function Writable:finish()
+    self:_end()
 end
 
 --[[
@@ -273,12 +223,12 @@ function Writable:uncork()
             not state.finished and
             not state.bufferProcessing and
             #(state.buffer) ~= 0 then
-            clearBuffer(self, state)
+            self:_flushBuffer(state)
         end
     end
 end
 
-function decodeChunk(state, chunk)
+function Writable:_decodeChunk(state, chunk)
 
     --[[
   if (!state.objectMode &&
@@ -291,141 +241,63 @@ function decodeChunk(state, chunk)
 end
 
 --[[
-// if we're already writing something, then just put this
-// in the queue, and wait our turn.  Otherwise, call _write
-// If we return false, then we need a drain event, so set that flag.
---]]
-function writeOrBuffer(stream, state, chunk, cb)
-    chunk = decodeChunk(state, chunk)
-    --[[
-  if (util.isBuffer(chunk))
-    encoding = 'buffer'
-  --]]
-    local len
-    if state.objectMode then
-        len = 1
-    else
-        len = string.len(chunk)
+    Call this method when no more data will be written to the stream. If 
+    supplied, the callback is attached as a listener on the finish event.
+
+    @param chunk String | Buffer Optional data to write
+    @param callback Function Optional callback for when the stream is finished
+]]
+function Writable:_end(chunk, callback)
+    local state = self._writableState
+
+    if type(chunk) == 'function' then
+        callback = chunk
+        chunk = nil
     end
 
-    state.length = state.length + len
-
-    local ret = state.length < state.highWaterMark
-    --[[
-  // we must ensure that previous needDrain will not be reset to false.
-  --]]
-    if not ret then
-        state.needDrain = true
-    end
-
-    if state.writing or state.corked ~= 0 then
-        table.insert(state.buffer, WriteReq:new(chunk, cb))
-    else
-        doWrite(stream, state, false, len, chunk, cb)
-    end
-
-    return ret
-end
-
-function doWrite(stream, state, writev, len, chunk, cb)
-    state.writelen = len
-    state.writecb = cb
-    state.writing = true
-    state.sync = true
-    if writev then
-        stream:_writev(chunk, state.onwrite)
-    else
-        stream:_write(chunk, state.onwrite)
-    end
-    state.sync = false
-end
-
-function onwriteError(stream, state, sync, er, cb)
-    if sync then
-        timer.setImmediate(function()
-            state.pendingcb = state.pendingcb - 1
-            cb(er)
-        end )
-    else
-        state.pendingcb = state.pendingcb - 1
-        cb(er)
-    end
-
-    stream._writableState.errorEmitted = true
-    stream:emit('error', er)
-end
-
-function onwriteStateUpdate(state)
-    state.writing = false
-    state.writecb = nil
-    state.length = state.length - state.writelen
-    state.writelen = 0
-end
-
-function onwrite(stream, err)
-    local state = stream._writableState
-    local sync = state.sync
-    local cb = state.writecb
-
-    onwriteStateUpdate(state)
-
-    if err then
-        onwriteError(stream, state, sync, err, cb)
-        return
+    if chunk ~= nil then
+        self:write(chunk)
     end
 
     --[[
-    // Check if we're actually ready to finish, but don't emit yet
+    // .end() fully uncorks
     --]]
-    local finished = needFinish(stream, state)
-
-    if not finished and
-        state.corked == 0 and
-        not state.bufferProcessing and
-        #(state.buffer) ~= 0 then
-        clearBuffer(stream, state)
+    if state.corked ~= 0 then
+        state.corked = 1
+        self:uncork()
     end
 
-    if sync then
-        timer.setImmediate(function()
-            afterWrite(stream, state, finished, cb)
-        end )
-    else
-        afterWrite(stream, state, finished, cb)
-    end
-
-end
-
-function afterWrite(stream, state, finished, cb)
-    if not finished then
-        onwriteDrain(stream, state)
-    end
-
-    state.pendingcb = state.pendingcb - 1
-    cb()
-    finishMaybe(stream, state)
-end
-
---[[
-// Must force callback to be called on nextTick, so that we don't
-// emit 'drain' before the write() consumer gets the 'false' return
-// value, and has a chance to attach a 'drain' listener.
---]]
-function onwriteDrain(stream, state)
-    if state.length == 0 and state.needDrain then
-        state.needDrain = false
-        stream:emit('drain')
+    --[[
+    // ignore unnecessary end() calls.
+    --]]
+    if (not state.ending) and (not state.finished) then
+        self:_endWritable(callback)
     end
 end
 
+function Writable:_endWritable(callback)
+    local state = self._writableState
+
+    state.ending = true
+    self:_maybeFinish(state)
+    if callback then
+        if state.finished then
+            timer.setImmediate(callback)
+        else
+            self:once('finish', callback)
+        end
+    end
+    state.ended = true
+    self:emit('end')
+end
 
 --[[
 // if there's something in the buffer waiting, then process it
 --]]
-function clearBuffer(stream, state)
+function Writable:_flushBuffer(state)
     state.bufferProcessing = true
 
-    if stream._writev and #(state.buffer) > 1 then
+    if self._writev and #(state.buffer) > 1 then
         --[[
     // Fast case, write everything using _writev()
     --]]
@@ -439,7 +311,7 @@ function clearBuffer(stream, state)
     // TODO(isaacs) clean this up
     --]]
         state.pendingcb = state.pendingcb + 1
-        doWrite(stream, state, true, state.length, state.buffer, '', function(err)
+        self:_onWrite(state, true, state.length, state.buffer, '', function(err)
             for i = 1, #(cbs) do
                 state.pendingcb = state.pendingcb - 1
                 cbs[i](err)
@@ -466,7 +338,7 @@ function clearBuffer(stream, state)
                 len = string.len(chunk)
             end
 
-            doWrite(stream, state, false, len, chunk, cb)
+            self:_onWrite(state, false, len, chunk, cb)
 
             --[[
       // if we didn't call the onwrite immediately, then
@@ -494,86 +366,187 @@ function clearBuffer(stream, state)
     state.bufferProcessing = false
 end
 
-function Writable:_write(chunk, cb)
-    cb(Error:new('not implemented'))
+--[[
+// If we get something that is not a buffer, string, null, or undefined,
+// and we're not in objectMode, then that's an error.
+// Otherwise stream chunks are all considered to be of length=1, and the
+// watermarks determine how many objects to keep in the buffer, rather than
+// how many bytes or characters.
+--]]
+function Writable:_isValidChunk(state, chunk, callback)
+    local valid = true
+    if (chunk ~= nil) and (type(chunk) ~= 'string') and not state.objectMode then
+        local err = Error:new('Invalid non-string/buffer chunk')
+        self:emit('error', err)
+        timer.setImmediate(function()
+            callback(err)
+        end )
+        valid = false
+    end
+    return valid
 end
 
-Writable._writev = nil
+function Writable:_onWrite(state, writev, len, chunk, callback)
+    state.writelen = len
+    state.writecb  = callback
+    state.writing  = true
+    state.sync     = true
+
+    if writev then
+        self:_writev(chunk, state.onwrite)
+    else
+        self:_write (chunk, state.onwrite)
+    end
+
+    state.sync     = false
+end
+
+function Writable:_onWriteAfter(state, finished, callback)
+    if not finished then
+        self:_onWriteDrain(state)
+    end
+
+    state.pendingcb = state.pendingcb - 1
+    callback()
+
+    self:_maybeFinish(state)
+end
 
 --[[
-    Call this method when no more data will be written to the stream. If 
-    supplied, the callback is attached as a listener on the finish event.
+// Must force callback to be called on nextTick, so that we don't
+// emit 'drain' before the write() consumer gets the 'false' return
+// value, and has a chance to attach a 'drain' listener.
+--]]
+function Writable:_onWriteDrain(state)
+    if (state.length == 0) and state.needDrain then
+        state.needDrain = false
+        self:emit('drain')
+    end
+end
 
-    @param chunk String | Buffer Optional data to write
-    @param callback Function Optional callback for when the stream is finished
-]]
-function Writable:_end(chunk, cb)
+function Writable:_onWriteError(state, error, callback)
+    if state.sync then
+        timer.setImmediate(function()
+            state.pendingcb = state.pendingcb - 1
+            callback(error)
+        end )
+    else
+        state.pendingcb = state.pendingcb - 1
+        callback(error)
+    end
+
+    state.errorEmitted = true
+    self:emit('error', error)
+end
+
+function Writable:_onWriteCompleted(err)
+    local state    = self._writableState
+    local sync     = state.sync
+    local callback = state.writecb
+
+    state.length   = state.length - state.writelen
+    state.writelen = 0
+    state.writing  = false
+    state.writecb  = nil    
+
+    if err then
+        self:_onWriteError(state, err, callback)
+        return
+    end
+
+    --[[
+    // Check if we're actually ready to finish, but don't emit yet
+    --]]
+    local finished = self:_needFinish(state)
+    if (not finished)
+        and (state.corked == 0) 
+        and (not state.bufferProcessing) 
+        and (#(state.buffer) ~= 0) then
+        self:_flushBuffer(state)
+    end
+
+    if sync then
+        timer.setImmediate(function()
+            self:_onWriteAfter(state, finished, callback)
+        end )
+    else
+        self:_onWriteAfter(state, finished, callback)
+    end
+end
+
+function Writable:_maybeFinish()
     local state = self._writableState
 
-    if type(chunk) == 'function' then
-        cb = chunk
-        chunk = nil
-    end
-
-    if chunk ~= nil then
-        self:write(chunk)
-    end
-
-    --[[
-  // .end() fully uncorks
-  --]]
-    if state.corked ~= 0 then
-        state.corked = 1
-        self:uncork()
-    end
-
-    --[[
-  // ignore unnecessary end() calls.
-  --]]
-    if not state.ending and not state.finished then
-        endWritable(self, state, cb)
-    end
-end
-
-
-function needFinish(stream, state)
-    return state.ending and state.length == 0 and #(state.buffer) == 0 and
-    not state.finished and not state.writing
-end
-
-function prefinish(stream, state)
-    if not state.prefinished then
-        state.prefinished = true
-        stream:emit('prefinish')
-    end
-end
-
-function finishMaybe(stream, state)
-    local need = needFinish(stream, state)
+    local need = self:_needFinish(state)
     if need then
+        if not state.prefinished then
+            state.prefinished = true
+            self:emit('prefinish')
+        end    
+
         if state.pendingcb == 0 then
-            prefinish(stream, state)
             state.finished = true
-            stream:emit('finish')
-        else
-            prefinish(stream, state)
+            self:emit('finish')
         end
     end
     return need
 end
 
-function endWritable(stream, state, cb)
-    state.ending = true
-    finishMaybe(stream, state)
-    if cb then
-        if state.finished then
-            timer.setImmediate(cb)
-        else
-            stream:once('finish', cb)
-        end
+function Writable:_needFinish(state)
+    return state.ending 
+        and (state.length == 0) 
+        and (#(state.buffer) == 0) 
+        and (not state.finished) 
+        and (not state.writing)
+end
+
+function Writable:_write(chunk, callback)
+    callback(Error:new('not implemented'))
+end
+
+Writable._writev = nil
+
+function Writable:_writeAfterEnd(state, callback)
+    local err = Error:new('write after end')
+    --[[
+    // TODO: defer error events consistently everywhere, not just the cb
+    --]]
+    self:emit('error', err)
+    timer.setImmediate( function()
+        callback(err)
+    end )
+end
+
+--[[
+// if we're already writing something, then just put this
+// in the queue, and wait our turn.  Otherwise, call _write
+// If we return false, then we need a drain event, so set that flag.
+--]]
+function Writable:_writeOrBuffer(state, chunk, callback)
+    chunk = self:_decodeChunk(state, chunk)
+
+    local len
+    if state.objectMode then
+        len = 1
+    else
+        len = string.len(chunk)
     end
-    state.ended = true
-    stream:emit('end')
+
+    state.length = state.length + len
+
+    local ret = state.length < state.highWaterMark
+    -- we must ensure that previous needDrain will not be reset to false.
+    if not ret then
+        state.needDrain = true
+    end
+
+    if state.writing or (state.corked ~= 0) then
+        table.insert(state.buffer, WriteReq:new(chunk, callback))
+    else
+        self:_onWrite(state, false, len, chunk, callback)
+    end
+
+    return ret
 end
 
 local exports = { }

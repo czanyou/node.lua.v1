@@ -93,18 +93,15 @@ function Stream:pipe(dest, options)
   // remove all the event listeners that were added.
   --]]
     function cleanup()
-        source:removeListener('data', ondata)
-        dest:removeListener('drain', ondrain)
-
-        source:removeListener('end', onend)
+        source:removeListener('data',  ondata)
+        source:removeListener('end',   onend)
         source:removeListener('close', onclose)
-
         source:removeListener('error', onerror)
-        dest:removeListener('error', onerror)
-
-        source:removeListener('end', cleanup)
+        source:removeListener('end',   cleanup)
         source:removeListener('close', cleanup)
 
+        dest:removeListener('drain', ondrain)
+        dest:removeListener('error', onerror)
         dest:removeListener('close', cleanup)
     end
 

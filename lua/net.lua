@@ -38,6 +38,7 @@ local utils = require('utils')
 local Emitter = require('core').Emitter
 local Duplex  = require('stream').Duplex
 
+-- ============================================================================
 --[[ Socket ]]--
 
 local Socket = Duplex:extend()
@@ -247,24 +248,26 @@ function Socket:destroy(exception, callback)
     end
 end
 
-function Socket:listen(queueSize)
+function Socket:listen(backlog)
     local onListen
-    queueSize = queueSize or 128
+    backlog = backlog or 128
     function onListen()
         local client = uv.new_tcp()
         uv.accept(self._handle, client)
         self:emit('connection', Socket:new( { handle = client }))
     end
-    return uv.listen(self._handle, queueSize, onListen)
+    return uv.listen(self._handle, backlog, onListen)
 end
 
 function Socket:getsockname()
     return uv.tcp_getsockname(self._handle)
 end
 
+-- ============================================================================
 --[[ Server ]]--
 
 local Server = Emitter:extend()
+
 function Server:init(options, connectionListener)
     if type(options) == 'function' then
         connectionListener = options
@@ -279,104 +282,112 @@ function Server:init(options, connectionListener)
     end
 end
 
+function Server:address()
+    if self._handle then
+        return self._handle:getsockname()
+    end
+end
+
+function Server:close(callback)
+    self:destroy(nil, callback)
+end
+
 function Server:destroy(err, callback)
     self._handle:destroy(err, callback)
     self:emit('close')
 end
 
-function Server:listen(port, ... --[[ ip, callback --]] )
-  local args = {...}
-  local ip, callback
+function Server:listen(port, ...) --[[ host, backlog, callback --]]
+    local args = {...}
+    local host, backlog, callback
 
-  if not self._handle then
-    self._handle = Socket:new({ handle = uv.new_tcp() })
-  end
+    if not self._handle then
+        self._handle = Socket:new({ handle = uv.new_tcp() })
+    end
 
-  -- Future proof
-  if type(args[1]) == 'function' then
-    callback = args[1]
-  else
-    ip = args[1]
-    callback = args[2]
-  end
+    -- Future proof
+    if type(args[1]) == 'function' then
+        callback = args[1]
 
-  ip = ip or '0.0.0.0'
+    elseif type(args[2]) == 'function' then  
+        host     = args[1]
+        callback = args[2]
 
-  self._handle:bind(ip, port)
-  local ret, message, err = self._handle:listen()
-  if (not ret) then
-    self:emit('error', message, err)
-    self:destroy(err, callback)
-    return
-  end
+    else
+        host     = args[1]
+        backlog  = args[2]
+        callback = args[3]
+    end
 
-  self._handle:on('connection', function(client)
-    self:emit('connection', client)
-  end)
+    host = host or '0.0.0.0'
+    backlog = backlog or 128
 
-  self._handle:on('error', function(err)
-    self:emit('error', err)
-  end)
+    self._handle:bind(host, port)
+    local ret, message, err = self._handle:listen(backlog)
+    if (not ret) then
+        self:emit('error', message, err)
+        self:destroy(err, callback)
+        return
+    end
 
-  self._handle:on('close', function()
-    self:emit('close')
-  end)  
+    self._handle:on('connection', function(client)
+        self:emit('connection', client)
+    end)
 
-  self:emit('listening')
-  
-  if callback then
-    timer.setImmediate(callback)
-  end
+    self._handle:on('error', function(err)
+        self:emit('error', err)
+    end)
 
-  return self
+    self._handle:on('close', function()
+        self:emit('close')
+    end)  
+
+    self:emit('listening')
+
+    if callback then
+        timer.setImmediate(callback)
+    end
+
+    return self
 end
 
-function Server:address()
-  if self._handle then
-    return self._handle:getsockname()
-  end
-  return
-end
-
-function Server:close(callback)
-  self:destroy(nil, callback)
-end
-
+-- ============================================================================
 -- Exports
 
 exports.Server = Server
 
 exports.Socket = Socket
 
-exports.createConnection = function(port, ... --[[ host, cb --]])
+exports.createConnection = function(port, ... ) --[[ host, callback --]]
   local args = {...}
   local host
   local options
   local callback
-  local sock
+  local socket
 
-  -- future proof
-  if type(port) == 'table' then
-    options = port
-    port = options.port
-    host = options.host
-    callback = args[1]
-  else
-    host = args[1]
-    callback = args[2]
-  end
+    -- future proof
+    if type(port) == 'table' then
+        options = port
+        port    = options.port
+        host    = options.host
+        callback = args[1]
 
-  sock = Socket:new()
-  sock:connect(port, host, callback)
-  return sock
+    else
+        host = args[1]
+        callback = args[2]
+    end
+
+    socket = Socket:new()
+    socket:connect(port, host, callback)
+    return socket
 end
 
 exports.connect = exports.createConnection
 
 exports.createServer = function(options, connectionListener)
-  local server = Server:new()
-  server:init(options, connectionListener)
-  return server
+    local server = Server:new()
+    server:init(options, connectionListener)
+    return server
 end
 
 return exports

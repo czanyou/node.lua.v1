@@ -102,7 +102,7 @@ local function run()
             passed = passed + 1
 
         else
-            protect(err)
+            print(err)
             print("!!!! Failed '" .. test.name .. "'.")
         end
     end -- end for i = 1, #tests do
