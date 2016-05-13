@@ -190,20 +190,20 @@
 
 // add by chengzhen
 #define LUA_SYS_ROOT	"/system/" // 有的开发板 /usr 为只读目录, /system 为可读写目录
-#define LUA_SYS_LDIR	LUA_SYS_ROOT "lib/lua/" LUA_VDIR "/"
-#define LUA_SYS_CDIR	LUA_SYS_ROOT "app/lua/" LUA_VDIR "/"		
+#define LUA_SYS_CDIR	LUA_SYS_ROOT "app/lua/"		
 
 #define LUA_ROOT	"/usr/local/"
 #define LUA_LDIR	LUA_ROOT "share/lua/" LUA_VDIR "/"
 #define LUA_CDIR	LUA_ROOT "lib/lua/" LUA_VDIR "/"
 #define LUA_PATH_DEFAULT  \
-		LUA_SYS_LDIR"?.lua;"  LUA_SYS_LDIR"?/init.lua;" \
+		LUA_SYS_CDIR"lnode/?.lua;"  LUA_SYS_CDIR"lnode/?/init.lua;" \
 		LUA_SYS_CDIR"?.lua;"  LUA_SYS_CDIR"?/init.lua;" \
 		LUA_LDIR"?.lua;"  LUA_LDIR"?/init.lua;" \
 		LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua;" \
+		"./lua/?.lua;" "./lua/?/init.lua;" \
 		"./?.lua;" "./?/init.lua"
 #define LUA_CPATH_DEFAULT \
-		LUA_SYS_LDIR"?.so;" LUA_SYS_CDIR"?.so;" LUA_CDIR"?.so;" LUA_CDIR"loadall.so;" "./?.so"
+		LUA_SYS_CDIR"?.so;" LUA_CDIR"?.so;" LUA_CDIR"loadall.so;" "./?.so"
 #endif			/* } */
 
 
