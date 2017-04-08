@@ -1,4 +1,6 @@
-return require('ext/tap')(function (test)
+local tap   = require('ext/tap')
+
+return tap(function (test)
 
   test("simple prepare", function (print, p, expect, uv)
     local prepare = uv.new_prepare()

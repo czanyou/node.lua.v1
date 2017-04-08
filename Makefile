@@ -1,75 +1,107 @@
-LUV_TAG=$(shell git describe --tags)
-LUABIN=build/local/lnode
-PWD = $(shell pwd)
-BASE_PATH = $(shell dirname ${PWD})
+LUV_TAG			?= $(shell git describe --tags)
+LUABIN			?= build/local/lnode
+PWD 			= $(shell pwd)
 
-.PHONY: clean all local build hi3518 hi3516c install uninstall test
+NODE_ROOTPATH   ?= /usr/local/lnode
+LOCAL_BIN_PATH  ?= /usr/local/bin
+NODE_BUILD 		?= ${PWD}/build/local
 
-all: local
+define cmake_build
+	cmake -H. -Bbuild/$1 -DBOARD_TYPE=$1
+	cmake --build build/$1 --config Release
+endef
+
+define make_link
+	@sudo rm -rf $2
+	@if [ -e $1 ]; then echo make link: $2; sudo ln -s $1 $2; fi;
+endef
+
+define make_bin_link
+	$(call make_link,${NODE_BUILD}/$1.so,${NODE_ROOTPATH}/bin/$1.so)
+endef
+
+## ------------------------------------------------------------
+
+.PHONY: clean all build install uninstall test local xcode hi3518 hi3516a mt7688
+
+all: help
 
 help:
-	@echo "local:     Build local release"
-	@echo "hi3518:    Build hi3518 release"
-	@echo "hi3516c:   Build hi3516c release"
-	@echo "clean:     Clean all build files"	
-	@echo "test: "	
-	@echo "install:   Install lnode, node.lua and vision.lua"
-	@echo "uninstall: Uninstall"		
+	@echo ""
+	@echo "node.lua is the core of the Node.lua."
+	@echo ""
+	@echo "Please select a make target:"
+	@echo ""
+	@echo "hi3516a    build for hi3516a"
+	@echo "hi3518     build for hi3518"
+	@echo "mt7688     build for mt7688"
+	@echo "local      build for current system"
+	@echo "xcode      generate a XCode project"
+	@echo ""
+	@echo "clean      clean all temporary build files"
+	@echo "install    install files into ${NODE_ROOTPATH}"
+	@echo "uninstall  remove all installed files"
+	@echo ""
 
-local:
-	cmake -H. -Bbuild/local
-	cmake --build build/local --config Release
 
-hi3518:
-#   交叉编译
-	cmake -H. -Bbuild/hi3518 -DBOARD_TYPE=hi3518
-	cmake --build build/hi3518 --config Release
+## ------------------------------------------------------------
 
-hi3516c:
-#   交叉编译
-	cmake -H. -Bbuild/hi3516c -DBOARD_TYPE=hi3516c
-	cmake --build build/hi3516c --config Release
 
 hi3516a:
-#   交叉编译
-	cmake -H. -Bbuild/hi3516a -DBOARD_TYPE=hi3516a
-	cmake --build build/hi3516a --config Release
+	$(call cmake_build,$@)
+
+hi3518:
+	$(call cmake_build,$@)
+
+mt7688:
+	$(call cmake_build,$@)
+
+local:
+	$(call cmake_build,$@)
+
+build: local
+
+xcode:
+	cmake -H. -G Xcode -Bbuild/$@ -DBOARD_TYPE=$@
+
+
+## ------------------------------------------------------------
 
 clean:
-	rm -rf build bin/cache
-	lnode tests/clean.lua
+	rm -rf build
 
 test:
 	${LUABIN} tests/fs/run.lua
 	${LUABIN} tests/http/run.lua
 	${LUABIN} tests/uv/run.lua
 
+install: uninstall
+	@echo 'Install the files into ${NODE_ROOTPATH}'
 
-install:
-#   安装文件到当前系统
-	sudo mkdir -p /usr/local/bin
+	@sudo mkdir -p ${LOCAL_BIN_PATH}
+	sudo mkdir -p ${NODE_ROOTPATH}/bin
+	sudo mkdir -p ${NODE_ROOTPATH}/conf	
 
-	@echo "Current Path: ${PWD}"
+	@sudo chmod 777 ${NODE_ROOTPATH}/conf
 
-# copy execute files
-	sudo cp build/local/lnode /usr/local/bin
-	sudo chmod 777 /usr/local/bin/lnode
+	@echo "make link: ${NODE_ROOTPATH}/lua"
+	@sudo ln -s ${PWD}/lua ${NODE_ROOTPATH}/lua
 
-	sudo cp bin/lpm /usr/local/bin	
-	sudo chmod 777 /usr/local/bin/lpm
+	$(call make_link,${PWD}/build/local/lnode,${LOCAL_BIN_PATH}/lnode)
+	$(call make_link,${PWD}/bin/lpm,${LOCAL_BIN_PATH}/lpm)
 
-# link node.lua & vision.lua lua path
-	sudo mkdir -p /system/app/lua
+	$(call make_bin_link,lsqlite)
+	$(call make_bin_link,lmbedtls)
 
-	sudo rm -rf /system/app/lua/lnode
-	sudo ln -s ${PWD}/lua /system/app/lua/lnode
+	@sudo chmod 777 ${LOCAL_BIN_PATH}/*
 
-	sudo rm -rf /system/app/lua/vision
-	sudo ln -s ${BASE_PATH}/vision.lua/lua/vision /system/app/lua/vision
+	@echo 'Installing done.'
+	@echo ''
 
 uninstall:
-#   从当前系统删除安装的文件
-	sudo rm -rf /usr/local/bin/lnode
-	sudo rm -rf /usr/local/bin/lpm
-	sudo rm -rf /system/app/lua/lnode
-	sudo rm -rf /system/app/lua/vision
+	@echo 'Remove all installed files'
+	sudo rm -rf ${LOCAL_BIN_PATH}/lnode
+	sudo rm -rf ${LOCAL_BIN_PATH}/lpm
+	sudo rm -rf ${NODE_ROOTPATH}/lua
+	@echo 'Removing done.'
+	@echo ''	

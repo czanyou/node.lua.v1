@@ -1,39 +1,78 @@
-# Timers#
+# 定时器 (timers)
 
-## clearImmediate(immediateObject) #
-Stops an immediate from triggering.
+[TOC]
 
-## clearInterval(intervalObject)#
-Stops an interval from triggering.
+通过 require('timer') 调用
 
-## clearTimeout(timeoutObject)#
-Prevents a timeout from triggering.
+## clearImmediate
 
-## ref() #
-If you had previously unref()d a timer you can call ref() to explicitly request the timer hold the program open. If the timer is already refd calling ref again will have no effect.
+    clearImmediate(immediateObject)
 
-Returns the timer.
+停止一个 immediate 的触发。   
 
-## setImmediate(callback[, arg][, ...])#
-To schedule the "immediate" execution of callback after I/O events callbacks and before setTimeout and setInterval. Returns an immediateObject for possible use with clearImmediate(). Optionally you can also pass arguments to the callback.
 
-Callbacks for immediates are queued in the order in which they were created. The entire callback queue is processed every event loop iteration. If you queue an immediate from inside an executing callback, that immediate won't fire until the next event loop iteration.
+## clearInterval
 
-## setInterval(delay, callback[, arg][, ...])#
-To schedule the repeated execution of callback every delay milliseconds. Returns a intervalObject for possible use with clearInterval(). Optionally you can also pass arguments to the callback.
+    clearInterval(intervalObject)
 
-To follow browser behavior, when using delays larger than 2147483647 milliseconds (approximately 25 days) or less than 1, Node.js will use 1 as the delay.
+停止一个 interval 的触发。
 
-## setTimeout(delay, callback[, arg][, ...])#
-To schedule execution of a one-time callback after delay milliseconds. Returns a timeoutObject for possible use with clearTimeout(). Optionally you can also pass arguments to the callback.
 
-The callback will likely not be invoked in precisely delay milliseconds. Node.js makes no guarantees about the exact timing of when callbacks will fire, nor of their ordering. The callback will be called as close as possible to the time specified.
+## clearTimeout
 
-To follow browser behavior, when using delays larger than 2147483647 milliseconds (approximately 25 days) or less than 1, the timeout is executed immediately, as if the delay was set to 1.
+    clearTimeout(timeoutObject)
 
-## unref() #
-The opaque value returned by `setTimeout` and `setInterval` also has the method timer.unref() which will allow you to create a timer that is active but if it is the only item left in the event loop, it won't keep the program running. If the timer is already unrefd calling unref again will have no effect.
+阻止一个 timeout 被触发。
 
-In the case of setTimeout when you unref you create a separate timer that will wakeup the event loop, creating too many of these may adversely effect event loop performance -- use wisely.
 
-Returns the timer.
+## ref 
+
+     ref() 
+
+如果您之前 unref() 了一个定时器，您可以调用 ref() 来明确要求定时器让程序保持运行。
+如果定时器已被 ref 那么再次调用 ref 不会产生其它影响。
+
+
+## setImmediate
+
+    setImmediate(callback[, arg][, ...])
+
+调度在所有 I/O 事件回调之后、setTimeout 和 setInterval 之前“立即”执行 callback。
+返回一个可能被 clearImmediate() 用到的 immediateId。可选地，您还能给回调传入参数。
+
+
+immediate 的回调以它们创建的顺序被加入队列。整个回调队列会在每个事件循环迭代中被处理。
+如果您在一个正被执行的回调中添加 immediate，那么这个 immediate 在下一个事件循环迭代之前都不会被触发。
+
+
+## setInterval
+
+    setInterval(delay, callback[, arg][, ...])
+
+调度每隔 delay 毫秒执行一次的 callback。返回一个可能被 clearInterval() 用到的 intervalId。
+可选地，您还能给回调传入参数。
+
+
+## setTimeout
+
+    setTimeout(delay, callback[, arg][, ...])
+
+调度 delay 毫秒后的一次 callback 执行。返回一个可能被 clearTimeout() 用到的 timeoutId。
+可选地，您还能给回调传入参数。
+
+
+请务必注意，您的回调有可能不会在准确的 delay 毫秒后被调用。Node
+不保证回调被触发的精确时间和顺序。回调会在尽可能接近所指定时间上被调用。
+
+
+## unref
+
+    unref()
+
+setTimeout 和 setInterval 所返回的值同时具有 timer.unref() 方法，允许您创建一个活动的、
+但当它是事件循环中仅剩的项目时不会保持程序运行的定时器。如果定时器已被 unref，再次调用 
+unref 不会产生其它影响。
+
+在 setTimeout 的情景中当您 unref 您会创建另一个定时器，并唤醒事件循环。
+创建太多这种定时器可能会影响事件循环的性能，慎用。
+

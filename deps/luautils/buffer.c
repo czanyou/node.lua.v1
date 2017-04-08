@@ -17,372 +17,235 @@
 
 #include "buffer.h"
 
-static int luv_buffer_new(lua_State* L)
+
+static int buffer_init(luv_buffer_t* buffer, int length)
 {
-	size_t size = luaL_optinteger(L, 1, 128 * 1024);
-
-	luv_ppp_buffer_t* buffer = NULL;
-	buffer = lua_newuserdata(L, sizeof(*buffer));
-	luaL_getmetatable(L, "uv_buffer");
-	lua_setmetatable(L, -2);
-
-	buffer->type 	 = LUV_BUFFER;
-	buffer->data 	 = NULL;
-	buffer->size 	 = 0;
-	buffer->position = 1;
-	buffer->limit 	 = 1;
-
-	if (size > 0) {
-		buffer->data = malloc(size);
-		buffer->size = size;
+	if (buffer == NULL) {
+		return 0;
 	}
+
+	buffer->data 	 		= NULL;
+	buffer->flags 	 		= 0;
+	buffer->limit 			= 1;
+	buffer->position 		= 1;
+	buffer->length 	 		= 0;
+	buffer->time_seconds 	= 0;
+	buffer->time_useconds 	= 0;
+	buffer->type 	 		= LUV_BUFFER_FLAG;
+	buffer->lock 			= NULL;
+
+	if (length > 0) {
+		buffer->data = malloc(length + 2);
+		buffer->length = length;
+	}
+
+	buffer->lock = malloc(sizeof(uv_mutex_t));
+	uv_mutex_init(buffer->lock);
 
 	return 1;
 }
 
-static luv_ppp_buffer_t* luv_buffer_check_buffer(lua_State* L, int index)
+static int buffer_lock(luv_buffer_t* buffer)
 {
-	luv_ppp_buffer_t* buffer = luaL_checkudata(L, index, "uv_buffer");
-	return buffer;
+	if (buffer && buffer->lock) {
+		uv_mutex_lock(buffer->lock);
+		return 1;
+	}
+
+	return 0;
 }
 
-static int luv_buffer_close(lua_State* L)
+static int buffer_unlock(luv_buffer_t* buffer)
 {
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
+	if (buffer && buffer->lock) {
+		uv_mutex_unlock(buffer->lock);
+		return 1;
+	}
+
+	return 0;
+}
+
+static int buffer_close(luv_buffer_t* buffer)
+{
 	if (buffer && buffer->data) {
 		free(buffer->data);
 
-		//printf("ppp_buffer_free: %d\r\n", buffer->size);
+		//printf("ppp_buffer_free: %d\r\n", buffer->length);
 
 		buffer->data 	 = NULL;
-		buffer->size 	 = 0;
+		buffer->length 	 = 0;
 		buffer->position = 1;
 		buffer->limit 	 = 1;
-		ret = 1;
+
+		uv_mutex_t* lock = buffer->lock;
+		buffer->lock = NULL;
+
+		if (lock) {
+			uv_mutex_destroy(lock);
+			free(lock);
+		}
+
+		return 1;
 	}
 
-	lua_pushinteger(L, ret);
-	return 1;
+	return 0;	
 }
 
-static int luv_buffer_fill(lua_State* L)
+static int buffer_copy(luv_buffer_t* buffer, luv_buffer_t* source, int position, int offset, int length)
 {
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	while (buffer && buffer->data) {
-		int data 	= luaL_checkinteger(L, 2);
-		int offset 	= luaL_checkinteger(L, 3);
-		int size 	= luaL_checkinteger(L, 4);
-
-		int buffer_size = buffer->size;
-		if (buffer_size <= 0) {
-			ret = -1;
-			break;
-
-		} else if (size <= 0) {
-			ret = -2;
-			break;
-
-		} else if (offset <= 0 || offset + size > buffer_size + 1) {
-			ret = -3;
-			break;
-		}
-
-		memset(buffer->data + offset - 1, data, size);
-		ret = size;
-		break;
+	lua_Integer ret = 0;
+	
+	if (buffer == NULL || buffer->data == NULL) {
+		return 0;
 	}
 
-	lua_pushinteger(L, ret);
-	return 1;
+	if (source == NULL || source->data == NULL) {
+		return 0;
+	}
+
+	lua_Integer buffer_size = buffer->length;
+	lua_Integer source_size = source->length;
+
+	if (position < 1 || position > buffer_size) {
+		return 0;
+
+	} else if (offset < 1 || offset > source_size) {
+		return 0;
+
+	} else if (length <= 0) {
+		return 0;
+
+	} else if (position + length > buffer_size + 1) {
+		return 0; // 缓存区不足
+
+	} else if (offset + length > source_size + 1) {
+		return 0; // 要复制的数据不足	
+	}		
+
+	char* dest_buffer = buffer->data + position - 1;
+	char* src_buffer  = source->data + offset - 1;
+	memcpy(dest_buffer, src_buffer, length);
+	return length;
 }
 
-static int luv_buffer_copy(lua_State* L)
+static int buffer_fill(luv_buffer_t* buffer, int value, int position, int length)
 {
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
+	if (buffer == NULL || buffer->data == NULL) {
+		return 0;
+	}
 
-	do {
-		if (buffer == NULL || buffer->data == NULL) {
-			break;
-		}
+	int bufferSize = buffer->length;
+	if (bufferSize <= 0) {
+		return -1;
 
-		luv_ppp_buffer_t* other = luv_buffer_check_buffer(L, 3);
-		if (other == NULL || other->data == NULL) {
-			break;
-		}
+	} else if (length <= 0) {
+		return -2;
 
-		int offset = luaL_checkinteger(L, 2);
-		int source = luaL_checkinteger(L, 4);
-		int count  = luaL_checkinteger(L, 5);
+	} else if (position < 1 || position + length > bufferSize + 1) {
+		return -3;
+	}
 
-		int buffer_size = buffer->size;
-		int other_size  = other->size;
-
-		if (offset <= 0 || offset > buffer_size) {
-			break;
-
-		} else if (source <= 0 || source > other_size) {
-			break;
-
-		} else if (count <= 0) {
-			break;
-
-		} else if (offset + count > buffer_size + 1) {
-			break;
-
-		} else if (source + count > other_size + 1) {
-			break;			
-		}		
-
-		char* dest_buffer = buffer->data + offset - 1;
-		char* src_buffer  = other->data  + source - 1;
-		memcpy(dest_buffer, src_buffer, count);
-		ret = 1;
-
-	} while (0);
-
-	lua_pushinteger(L, ret);
-	return 1;
+	memset(buffer->data + position - 1, value, length);
+	return length;
 }
 
-static int luv_buffer_get_byte(lua_State* L)
+
+static int buffer_get_byte(luv_buffer_t* buffer, int position)
 {
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
 	if (buffer && buffer->data) {
-		int offset = luaL_checkinteger(L, 2);
-
-		if (offset > 0 && offset <= buffer->size) {
-			char* data = buffer->data + offset - 1;
-			ret = (unsigned char)(*data);
+		// position 为 1 到 size
+		if (position >= 1 && position <= buffer->length) {
+			char* data = buffer->data + position - 1;
+			return (unsigned char)(*data);
 		}
 	}
 
-	lua_pushinteger(L, ret);
-	return 1;
+	return 0;
 }
-static int luv_buffer_get_bytes(lua_State* L)
-{
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	if (buffer && buffer->data) {
-		int offset = luaL_checkinteger(L, 2);
-		int size   = luaL_checkinteger(L, 3);
 
-		if (offset > 0 && size > 0 && offset + size <= buffer->size + 1) {
-			lua_pushlstring(L, buffer->data + offset - 1, size);
+
+static char* buffer_get_bytes(luv_buffer_t* buffer, int position, int length, int limit)
+{
+	if (buffer && buffer->data) {
+		if (length > 0 && (position >= 1) && (position <= limit)) {
+			char* data = buffer->data + position - 1;
+			return data;
+		}
+	}
+
+	return NULL;
+}
+
+static int buffer_move(luv_buffer_t* buffer, int position, int offset, int length)
+{
+	if (buffer == NULL ||  buffer->data == NULL) {
+		return 0;
+	}
+
+	lua_Integer buffer_size = buffer->length;
+
+	if (position < 1 || position > buffer_size) {
+		return 0;
+
+	} else if (offset < 1 || offset > buffer_size) {
+		return 0;
+
+	} else if (length <= 0) {
+		return 0;
+
+	} else if (position + length > buffer_size + 1) {
+		return 0;
+
+	} else if (offset + length > buffer_size + 1) {
+		return 0;			
+	}
+
+	char* dest_buffer = buffer->data + position - 1;
+	char* src_buffer  = buffer->data + offset - 1;
+	memmove(dest_buffer, src_buffer, length);
+	return length;
+}
+
+static int buffer_put_byte(luv_buffer_t* buffer, int position, int value)
+{
+	if (buffer && buffer->data) {
+		// position, offset 为 1 到 size
+		if (position >= 1 && position <= buffer->length) {
+			char* data = buffer->data + position - 1;
+			*data = (unsigned char)value;
 			return 1;
 		}
 	}
 
-	lua_pushnil(L);
-	return 1;
+	return 0;
 }
 
-static int luv_buffer_limit(lua_State* L)
+static int buffer_put_bytes(luv_buffer_t* buffer, int position, char* source_data, int data_size, int offset, int length)
 {
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	if (buffer) {
-		if (lua_isnumber(L, 1)) {
-			int limit = luaL_checkinteger(L, 1);
-			if (limit > 0 && limit <= buffer->size) {
-				buffer->limit = limit;
-			}
-		}
-
-		ret = buffer->limit;
+	if (buffer == NULL || buffer->data == NULL) {
+		return 0;
 	}
 
-	lua_pushinteger(L, ret);
-	return 1;
-}
 
-static int luv_buffer_move(lua_State* L)
-{
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	do {
-		if (buffer == NULL ||  buffer->data == NULL) {
-			break;
-		}
+	lua_Integer buffer_size = buffer->length;
+	if (buffer_size <= 0) {
+		return -1;
 
-		int offset = luaL_checkinteger(L, 2);
-		int source = luaL_checkinteger(L, 3);
-		int count  = luaL_checkinteger(L, 4);
+	} else if (length <= 0) {
+		return -2;
 
-		int buffer_size = buffer->size;
-		if (offset <= 0 || offset > buffer_size) {
-			break;
+	} else if (position < 1 || position + length > buffer_size + 1) {
+		return -3;
 
-		} else if (source <= 0 || source > buffer_size) {
-			break;
+	} else if (data_size <= 0) {
+		return -4;
 
-		} else if (count <= 0) {
-			break;
-
-		} else if (offset + count > buffer_size + 1) {
-			break;
-
-		} else if (source + count > buffer_size + 1) {
-			break;			
-		}
-
-		char* dest_buffer = buffer->data + offset - 1;
-		char* src_buffer  = buffer->data + source - 1;
-
-		memmove(dest_buffer, src_buffer, count);
-		ret = 1;
-
-	} while (0);
-
-	lua_pushinteger(L, ret);
-	return 1;
-}
-
-static int luv_buffer_position(lua_State* L)
-{
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	if (buffer) {
-		if (lua_isnumber(L, 1)) {
-			int position = luaL_checkinteger(L, 1);
-			if (position > 0 && position <= buffer->size) {
-				buffer->position = position;
-			}
-		}
-
-		ret = buffer->position;
+	} else if (offset < 1 || offset + length > data_size + 1) {
+		return -5;
 	}
 
-	lua_pushinteger(L, ret);
-	return 1;
-}
-
-static int luv_buffer_put_byte(lua_State* L)
-{
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	if (buffer && buffer->data) {
-		int offset = luaL_checkinteger(L, 2);
-		int value  = luaL_checkinteger(L, 3);
-
-		if (offset > 0 && offset <= buffer->size) {
-			char* data = buffer->data + offset - 1;
-			*data = (unsigned char)value;
-			ret = 1;
-		}
-	}
-
-	lua_pushinteger(L, ret);
-	return 1;
-}
-
-static int luv_buffer_put_bytes(lua_State* L)
-{
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	while (buffer && buffer->data) {
-		size_t data_size = 0;
-		int position = luaL_checkinteger(L, 2);
-		char* data = (char*)luaL_checklstring(L, 3, &data_size);
-		int offset = luaL_checkinteger(L, 4);
-		int size = luaL_checkinteger(L, 5);
-
-		int buffer_size = buffer->size;
-		if (buffer_size <= 0) {
-			ret = -1;
-			break;
-
-		} else if (size <= 0) {
-			ret = -2;
-			break;
-
-		} else if (position <= 0 || position + size > buffer_size + 1) {
-			ret = -3;
-			break;
-
-		} else if (data_size <= 0) {
-			ret = -4;
-			break;
-
-		} else if (offset <= 0 || offset + size > data_size + 1) {
-			ret = -5;
-			break;
-		}
-
-		memcpy(buffer->data + position - 1, data + offset - 1, size);
-		ret = size;
-
-		break;
-	}
-
-	lua_pushinteger(L, ret);
-	return 1;
-}
-
-static int luv_buffer_size(lua_State* L)
-{
-	int ret = 0;
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	if (buffer) {
-		ret = buffer->size;
-	}
-
-	lua_pushinteger(L, ret);
-	return 1;
-}
-
-static int luv_buffer_to_string(lua_State* L)
-{
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-	if (buffer && buffer->data) {
-		lua_pushlstring(L, buffer->data, buffer->size);
-		return 1;
-	}
-
-	lua_pushnil(L);
-	return 1;
-}
-
-static int luv_buffer_tostring(lua_State* L) {
-	luv_ppp_buffer_t* buffer = luv_buffer_check_buffer(L, 1);
-    lua_pushfstring(L, "uv_buffer_t: %p", buffer);
-  	return 1;
-}
-
-static const luaL_Reg luv_buffer_functions[] = {
-	{ "close",			luv_buffer_close },
-	{ "copy",			luv_buffer_copy },
-	{ "xcopy",			luv_buffer_copy },	
-	{ "fill",			luv_buffer_fill },
-	{ "get_byte",		luv_buffer_get_byte },
-	{ "get_bytes",		luv_buffer_get_bytes },
-	{ "limit",			luv_buffer_limit },	
-	{ "move",			luv_buffer_move },
-	{ "position",		luv_buffer_position },
-	{ "put_byte",		luv_buffer_put_byte },
-	{ "put_bytes",		luv_buffer_put_bytes },
-	{ "size",			luv_buffer_size },
-	{ "to_string",		luv_buffer_to_string },
-	{ NULL, NULL }
-};
-
-static void luv_buffer_init(lua_State* L) {
-	// buffer
-	luaL_newmetatable(L, "uv_buffer");
-
-	luaL_newlib(L, luv_buffer_functions);
-	lua_setfield(L, -2, "__index");
-
-	lua_pushcfunction(L, luv_buffer_close);
-	lua_setfield(L, -2, "__gc");
-
-	lua_pushcfunction(L, luv_buffer_tostring);
-	lua_setfield(L, -2, "__tostring");	
-
-	lua_pop(L, 1);
+	char* dest_buffer = buffer->data + position - 1;
+	memcpy(dest_buffer, source_data + offset - 1, length);
+	return length;
 }
 

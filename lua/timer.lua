@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014-2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +16,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 --]]
-
---[[
-
---]]
 local meta = { }
-meta.name        = "luvit/timer"
+meta.name        = "lnode/timer"
 meta.version     = "1.0.0-4"
 meta.license     = "Apache 2"
-meta.homepage    = "https://github.com/luvit/luvit/blob/master/deps/timer.lua"
-meta.description = "Javascript style setTimeout and setInterval for luvit"
-meta.tags        = { "luvit", "timer" }
+meta.description = "Javascript style setTimeout and setInterval for lnode"
+meta.tags        = { "lnode", "timer" }
 
 local exports = { meta = meta }
 
@@ -143,7 +139,7 @@ local idler   = uv.new_idle()
 
 local immediateQueue = { }
 
-local function onCheck()
+local function _onCheck()
     local queue = immediateQueue
     immediateQueue = { }
     for i = 1, #queue do
@@ -181,11 +177,11 @@ function exports.setImmediate(callback, ...)
         local pprint  = require('utils').pprint
 
         if (not uv.is_closing(checker)) then
-            checker:start(onCheck)
+            checker:start(_onCheck)
         end
 
         if (not uv.is_closing(idler)) then
-            idler:start(onCheck)
+            idler:start(_onCheck)
         end
     end
 

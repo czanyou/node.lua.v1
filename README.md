@@ -1,162 +1,168 @@
-# node.lua
+#Node.lua
 
-> - 编写：成真
-> - 版本：1.0
+> - Write: come true
+> - Version: 2.0
 
-实现和 Node.js 同样功能的 Lua 开发环境
+## Overview
 
-## 项目依赖
+Node.lua is a Lua runtime environment similar to Node.js.
 
-目录: /main/node.lua/deps
+The purpose of Node.lua is not to replace Node.js, but rather to use Node.js-like development and runtime environments on less-expensive hardware such as embedded devices.
 
-node.lua 主程序，由 C 语言实现, 主要包含了 lua, libuv, miniz 等核心库
+Compared to Node.js, Node.lua requires less memory, runs faster, and is easier to mix with C/C ++, and provides a useful API, such as coroutines, multithreading, and more.
 
-- (lua) PUC lua 5.3.2 以上
-- (libuv) libuv 1.9.0 以上
-- (luajson) cjson
-- (luazip) miniz zip 压缩库
-- (luauv)
-- (luautils) buffer, hex, http parser, md5 ...
+The main drawback is the relative Javascript, the use of Lua language is relatively small, but fortunately, Lua and Javascript are very similar, familiar with the development is not very different.
 
-依赖库下载地址：
+## Directory Definitions
+
+- bin The executable directory
+- build CMake Temporary build directory
+- deps The C module directory on which the main program depends
+- docs The documentation directory
+- Lua core library source code directory
+- src main program C language source code directory
+Test cases directory
+
+### The root directory file
+
+- CMakeLists.txt CMake configuration file
+- install.bat Batch file to run install.lua under Windows
+- install.lua Windows development and runtime environment installation script
+- make.bat CMake the batch file to run under Windows
+- Makefile Compile the batch file under Linux
+- package.json lnode Lua core library metadata configuration file
+- README.md This document
+
+### bin: Executable directory
+
+- lpm Lua Package Manager main executable program
+- lpm.bat lpm in the implementation of the Windows batch file
+
+### deps: Dependencies
+
+Node.lua main program by the C language, and contains the lua, libuv, miniz core library:
+
+- (libuv) libuv 1.9.0 or more
+- (Lua) PUC Luua 5.3.2 above
+- (luajson) cjson JSON codec, in Lua by require ("cjson") call
+- (luassl) krypton SSL implementation of the library, in the Lua can require ("ssl") call
+- (luautils) to achieve buffer, hex, http parser, md5 other functions, in Lua by require ("lutils") call
+- (luauv) is mainly used to bind libuv to Lua. In Lua, it can be called by require ("uv")
+- (luazip) miniz ZIP compression decompression library, in Lua by require ("miniz") call
+
+Dependency library source code download address:
 
 - http://www.lua.org/ftp/
 - https://github.com/libuv/libuv
 - https://github.com/richgel999/miniz
 - https://github.com/mpx/lua-cjson
+- https://github.com/luvit/luv
 
-注意: 因为 lua 5.3 和 luajit 2 差别较大, 暂时不提供对 luajit 2 的支持.
+Note: Because lua 5.3 and luajit 2 vary widely, temporarily do not provide support for luajit 2.
 
-## libuv C 语言绑定
+### lua: The Lua core library for class node.js
 
-开源项目下载地址
+Node.lua core library, and the main node.js similar to the core library, call the same method can refer to the document node.js
 
-    https://github.com/luvit/luv
+## Build the main program
 
-主要是将 libuv 绑定到 lua.
+### Overview
 
-在 lua 中可通过 require("uv") 调用
+This section describes how to develop and compile the source code after downloading it to the local source
 
-## 类 node.js Lua 核心库
+The main program source code is mainly composed of C language, the source file directory is `/src/`, the main function file is `/src/main.c`, and the other modules are located in`/deps/`directory.
 
-目录: /main/node.lua/lua
+Mainly used to achieve cross-platform cmake build and compile the code, the compiler must be installed cmake related software
 
-node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方法同样可以参考 node.js 的文档
+### Compiler under Linux
 
-## 文档 
+Direct implementation of the project root directory can be made.
 
-目录: /main/node.lua/docs
+### Compiled under MacOS
 
-## 其他 
+Install CMake first.
 
-其他目录定义:
+CMake can be installed after the implementation of the following command to install CMake command line tool.
 
-- bin       目标执行文件输出目录
-- build     cmake 构建临时目录
-- deps      依赖的项目存放目录
-- docs      文档存放目录
-- examples  参考代码目录
-- lua       Lua 核心库源代码目录
-- src       C语言绑定源代码目录
-- tests     测试用例目录
+    Sudo mkdir -p/usr/local/bin
+    Sudo /Applications/CMake.app/Contents/bin/cmake-gui --install =/usr/local/bin
 
-### 根目录文件
+### Compile under Windows
 
-- build.lua     打包 lua 文件, 生成 lnode.zip
-- CMakeLists.txt cmake 配置文件
-- install.bat   Windows 下执行 install.lua 文件的批处理文件
-- install.lua   运行环境安装脚本
-- LICENSE       开源协议文件
-- make.bat      Windows 下 cmake 批处理文件
-- Makefile      Makefile
-- package.json  lnode.zip 包元数据文件
-- README.md     说明文件
+Install cmake and visual studio first, and then run make.bat, will be generated into build/win32 directory
 
-### bin 目录文件
+### Cross-compilation
 
-- lpm           Lua Package Manager 执行文件
-- lpm.cmd       Windows 下执行 lpm 文件的批处理文件
-- main          lnode.zip 主程序
+Cross-compiler hi3518, first install the cmake and hi3518 Linux tool chain, and then run make hi3518, will be generated into build/hi3518 directory
 
-## 构建
+#### Other platforms cross compiler:
 
-### 主程序
-
-主要采用 cmake 构建和编译代码, 编译前需先安装 cmake 软件
-
-生成文件: 
-    bin/lnode (独立执行文件)
-
-以及:
-    bin/libluanode.so (模块文件)
-    bin/lshell (依赖于 libluanode.so)
-
-#### Windows 编译
-
-先安装 cmake 和 visual studio, 然后运行 make.bat, 将成生成 build/win32 目录 
-
-#### 交叉编译
-
-交叉编译 hi3518，先安装 cmake 和 hi3518 工具链，然后运行 make hi3518, 将成生成 build/hi3518 目录 
-
-其他平台交叉编译办法:
-
-修改 CMakeLists.txt 下面位置代码, 添加新的平台类型和工具链名称
+Modify the location code below CMakeLists.txt to add the new platform type and toolchain name
 
 ```
-# 交叉编译选项, 通过 BOARD_TYPE 参数确定编译工具链
-MESSAGE(STATUS "Build: BOARD_TYPE=${BOARD_TYPE}  ")
-if (BOARD_TYPE STREQUAL hi3518)
-  MESSAGE(STATUS "Build: use arm-hisiv100nptl-linux-gcc")
-  set(CMAKE_C_COMPILER "arm-hisiv100nptl-linux-gcc")
-else (BOARD_TYPE STREQUAL hi3518)
-  
-endif (BOARD_TYPE STREQUAL hi3518)
+# Cross-compile option, through the BOARD_TYPE parameter to determine the compiler tool chain
+MESSAGE (STATUS "Build: BOARD_TYPE = $ {BOARD_TYPE}")
+If (BOARD_TYPE STREQUAL hi3518)
+  MESSAGE (STATUS "Build: use arm-hisiv100nptl-linux-gcc")
+  Set (CMAKE_C_COMPILER "arm-hisiv100nptl-linux-gcc")
+Else (BOARD_TYPE STREQUAL hi3518)
+
+Endif (BOARD_TYPE STREQUAL hi3518)
 ```
 
-修改 Makefile, 参考 hi3518 添加其他平台编译命令
+Modify the Makefile, refer to hi3518 add other platform compiler command
 
+```Sh
+Hi3518:
+# Cross-compilation
+    Cmake -H. -Bbuild/hi3518 -DBOARD_TYPE = hi3518
+    Cmake --build build/hi3518 --config Debug
 ```
-hi3518:
-#   交叉编译
-    cmake -H. -Bbuild/hi3518 -DBOARD_TYPE=hi3518
-    cmake --build build/hi3518 --config Debug
-```
 
-其中 
+among them
 
-- build/hi3518 表示中间文件和目标文件生成目录 
-- BOARD_TYPE=hi3518 表示CMakeLists中配置的平台类型
+- build/hi3518 represents the intermediate file and target file generation directory
+- BOARD_TYPE = hi3518 Indicates the platform type configured in CMakeLists
 
-如果未指定将默认采用开发机的编译环境和工具
+If you do not specify the development environment will be the default environment and tools
 
-### Lua 核心库
+### Makefile
 
-运行脚本: 
-    build.lua
+Eventually, the lnode executable will be generated, along with the required dynamic-link libraries:
 
-生成文件: 
-    bin/lnode.zip
+- Linux: `bin/lnode`.
 
-配置文件: 
-    package.json
+- MacOS: `bin/lnode`.
 
-## 安装运行/调试环境
+- Under Windows: `bin/lnode.exe` and` bin/lua53.dll`.
 
-运行脚本: install.lua
-注: windows 下运行 install.bat
+# # Lua development and debugging
 
-上述脚本将复制上面生成的可执行文件到系统目录并添加需要的环境变量
+This section describes how to develop and debug lua scripts after compiling the lnode main program.
 
+### Windows development and debugging
 
+After the main program is built, the executable is copied to the `node.lua\bin \` directory.
 
+Then run `node.lua\install.bat`, the current development directory will be ` node.lua\bin\` and `node.lua\lua\`will be registered to the system environment variable.
 
+Open a new cmd window, execute `lpm`, and if it runs successfully, it means the installation is correct.
 
+### Linux development and debugging
 
+Installation content are:
 
+- Copy the lnode main program, and lpm and other executable files to the system directory, and add the appropriate execution permissions.
+- To call a module in the lua directory, you must associate the lua directory to the Lua module search path of the lnode main program. Otherwise, you will not be able to find the relevant module.
 
+After the completion of the main program to build in the current directory to run:
 
+> Make install
 
+The above script will copy the above generated executable file to the system directory and add the required environment variables
 
+At the system command line prompt, execute: `lpm`, if there is help to display lpm, it means that Node.lua development environment installed successfully
 
+## Release
 
+Node.lua can not be released separately, it is only Node.lua core project, to publish the complete Node.lua SDK, please refer to node.lua on a directory `README.md`.

@@ -1,7 +1,5 @@
 # LibUV in Lua
 
-## 目录
-
 [TOC]
 
 The [luv][] project provides access to the multi-platform support library

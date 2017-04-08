@@ -17,34 +17,34 @@ limitations under the License.
 --]]
 
 require('ext/tap')(function(test)
-  local FS = require('fs')
-  local Path = require('path')
+  local fs     = require('fs')
+  local path   = require('path')
   local Buffer = require('buffer').Buffer
-  local string = require('string')
 
-  local dirName = Path.join(module.dir, 'fixtures', 'test-readfile-unlink')
-  local fileName = Path.join(dirName, 'test.bin')
+  local dirName = path.join(module.dir, 'fixtures', 'test-readfile-unlink')
+  local fileName = path.join(dirName, 'test.bin')
 
   local bufStr = string.rep(string.char(42), 512 * 1024)
   local buf = Buffer:new(bufStr)
+  print('buf', buf:length())
 
   test('fs readfile unlink', function()
 
     local ok, err
 
-    ok, err = pcall(FS.mkdirSync, dirName, '0777')
+    ok, err = pcall(fs.mkdirSync, dirName, '0777')
     if not ok then
       assert(err.code == 'EEXIST')
     end
 
-    FS.writeFileSync(fileName, buf:toString())
-    FS.readFile(fileName, function(err, data)
+    fs.writeFileSync(fileName, buf:toString())
+    fs.readFile(fileName, function(err, data)
       assert(err == nil)
-      assert(#data == buf.length)
+      assert(#data == buf:length())
       assert(string.byte(data, 1) == 42)
 
-      FS.unlink(fileName, function()
-        FS.rmdirSync(dirName)
+      fs.unlink(fileName, function()
+        fs.rmdirSync(dirName)
       end)
     end)
   end)

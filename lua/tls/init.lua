@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014-2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,20 +17,13 @@ limitations under the License.
 
 --]]
 local exports = {}
-exports.name = "luvit/tls"
-exports.version = "1.3.2"
-exports.dependencies = {
-    "luvit/core@1.0.5",
-    "luvit/net@1.2.0",
-    "luvit/timer@1.0.0",
-    "luvit/utils@1.0.0",
-}
-exports.license = "Apache 2"
-exports.homepage = "https://github.com/luvit/luvit/blob/master/deps/tls"
-exports.description = "A node-style tls module for luvit."
-exports.tags = {"luvit", "tls"}
+exports.name        = "lnode/tls"
+exports.version     = "1.3.2"
+exports.license     = "Apache 2"
+exports.description = "A node-style tls module for lnode."
+exports.tags        = {"lnode", "tls"}
 
-local loaded = pcall(require, 'openssl')
+local loaded = pcall(require, 'ssl')
 if not loaded then return end
 
 local _common_tls = require('tls/common')
@@ -49,6 +43,7 @@ local extend = function(...)
 end
 
 local Server = net.Server:extend()
+
 function Server:init(options, connectionListener)
     options = options or {}
     options.server = true
@@ -57,9 +52,9 @@ function Server:init(options, connectionListener)
     net.Server.init(self, options, function(raw_socket)
         local socket
         socket = _common_tls.TLSSocket:new(raw_socket, {
-            secureContext = sharedCreds,
-            isServer = true,
-            requestCert = options.requestCert,
+            secureContext   = sharedCreds,
+            isServer        = true,
+            requestCert     = options.requestCert,
             rejectUnauthorized = options.rejectUnauthorized,
         })
 
@@ -88,7 +83,7 @@ local DEFAULT_OPTIONS = {
     -- TODO checkServerIdentity
 }
 
-exports.connect = function(options, callback)
+function exports.connect(options, callback)
     local hostname, port, sock
 
     callback = callback or function() end
@@ -101,12 +96,14 @@ exports.connect = function(options, callback)
     return sock
 end
 
-exports.createServer = function(options, secureCallback)
+function exports.createServer(options, secureCallback)
     local server = Server:new()
     server:init(options, secureCallback)
     return server
 end
 
 exports.TLSSocket = _common_tls.TLSSocket
+
 exports.createCredentials = _common_tls.createCredentials
+
 return exports

@@ -1,0 +1,1 @@
+{"name":"win","version":"0.6.9","files":["install.sh","bin\/init.sh"],"md5sum":"5f6b8086f5e43592aab7f66569dcb83f","size":1079344,"libs":["lmedia.so","lsqlite.so"],"description":"Windows PC","filename":"nodelua-win-sdk.0.6.9.zip","mtime":1484729993,"target":"win","depends":{},"tags":["win","core"],"applications":["httpd","ssdp","lhost","sdcp","mqtt"]}

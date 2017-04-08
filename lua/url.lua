@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,12 +78,11 @@ properties of URL objects:
 
 --]]
 local meta = { }
-meta.name        = "luvit/url"
+meta.name        = "lnode/url"
 meta.version     = "1.0.4-2"
 meta.license     = "Apache 2"
-meta.homepage    = "https://github.com/luvit/luvit/blob/master/deps/url.lua"
-meta.description = "Node-style url codec for luvit"
-meta.tags        = { "luvit", "url", "codec" }
+meta.description = "Node-style url codec for lnode"
+meta.tags        = { "lnode", "url", "codec" }
 
 local exports = { meta = meta }
 
@@ -98,6 +98,10 @@ false then the query property will not be parsed or decoded. Defaults to false.
 
 --]]
 function exports.parse(url, parseQueryString)
+    if (not url) or (url == '') then
+        return nil
+    end
+
     local href = url
     local chunk, protocol = url:match("^(([a-z0-9+]+)://)")
     url = url:sub((chunk and #chunk or 0) + 1)
@@ -201,7 +205,9 @@ function exports.format(urlObj)
         return nil
     end
 
-    local sb = require("utils").StringBuffer:new()
+    local utils = require("utils")
+
+    local sb = utils.StringBuffer:new()
     local host = urlObj.hostname or urlObj.host
 
     if (host) then

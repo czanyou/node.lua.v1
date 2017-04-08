@@ -18,6 +18,8 @@ limitations under the License.
 
 local http = require('http')
 local string = require('string')
+local assert = require('assert')
+local utils  = require('utils')
 
 local HOST = "127.0.0.1"
 local PORT = process.env.PORT or 10085
@@ -28,6 +30,10 @@ local a = string.rep('a', 1024)
 local data = string.rep(a, 1024)
 local MB = data:len()
 
+local sign = utils.bin2hex(utils.md5(data))
+
+console.log('sign', sign)
+
 require('ext/tap')(function(test)
   test('http-post-1mb', function(expect)
     server = http.createServer(function(request, response)
@@ -36,6 +42,9 @@ require('ext/tap')(function(test)
       assert(request.method == "POST")
       assert(request.url == "/foo")
       assert(request.headers.bar == "cats")
+
+      console.log(request.headers)
+
       request:on('data', function(chunk)
         table.insert(buffer, chunk)
       end)
@@ -50,7 +59,7 @@ require('ext/tap')(function(test)
     server:listen(PORT, HOST, function()
       local headers = {
         {'bar', 'cats'},
-        {'Content-Length', MB},
+        --{'Content-Length', MB},
         {'Transfer-Encoding', 'chunked'}
       }
       local body = {}
@@ -69,9 +78,13 @@ require('ext/tap')(function(test)
         end)
         response:on('end', expect(function(data)
           data = table.concat(body)
-          assert(data:len() == MB)
+          assert.equal(data:len(), MB)
           p('Response ended')
           server:close()
+
+          local newsign = utils.bin2hex(utils.md5(data))
+          console.log('sign', newsign, newsign == sign)
+
         end))
       end)
       req:write(data)

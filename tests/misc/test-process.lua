@@ -1,181 +1,102 @@
-local init  = require('init')
-local spawn = require('child_process').spawn
-local net = require('net')
-local uv = require('uv')
+local process 	= require('process')
+local lnode     = require('lnode')
+local assert    = require('assert')
 
-require('ext/tap')(function(test)
+if (process.getgid) then
+	console.log(process.getgid())
+	console.log(process.getuid())
+end
 
-  test('process getpid', function()
-    p('process.pid', process.pid)
-    assert(process.pid)
-  end)
+require('ext/tap')(function (test)
 
-  test('process argv', function()
-    p('process.argv', process.argv)
-    assert(process.argv)
-  end)
+	test("test hrtime", function()
+		assert.equal(type(process.hrtime()), 'number')
+		assert(process.hrtime())
+	end)
 
-  test('signal usr1,usr2,hup', function(expect)
-    local onHUP, onUSR1, onUSR2
-    if os.type() == 'win32' then return end
-    
-    function onHUP() process:removeListener('sighup', onHUP) end
-    function onUSR1() process:removeListener('sigusr1', onUSR1) end
-    function onUSR2() process:removeListener('sigusr2', onUSR2) end
-    process:on('sighup', expect(onHUP))
-    process:on('sigusr1', expect(onUSR1))
-    process:on('sigusr2', expect(onUSR2))
-    process.kill(process.pid, 'sighup')
-    process.kill(process.pid, 'sigusr1')
-    process.kill(process.pid, 'sigusr2')
-  end)
+	test("test rootPath", function()
+		assert.equal(type(process.rootPath), 'string')
+		assert(process.rootPath)
+		console.log(process.rootPath)
+		console.log(process.now(), process.uptime())
+	end)
 
-  test('environment subprocess', function(expect)
-    local child, options, onStdout, onExit, onEnd, data
+	test("test argv", function()
+		assert.equal(type(process.argv), 'table')
+		assert(process.argv)
+	end)
 
-    options = {
-      env = { TEST1 = 1 }
-    }
+	test("test arch", function()
+		assert.equal(type(process.arch()), 'string')
+		assert(process.arch())
+	end)
 
-    data = ''
+	test("test platform", function()
+		assert.equal(type(process.platform()), 'string')
+		assert(process.platform())
+	end)	
 
-    if os.type() == 'win32' then
-      child = spawn('cmd.exe', {'/C', 'set'}, options)
-    else
-      child = spawn('env', {}, options)
-    end
+	test("test cwd", function()
+		assert.equal(type(process.cwd()), 'string')
+		assert(process.cwd())
+	end)
 
-    function onStdout(chunk)
-      --p('stdout', chunk)
-      data = data .. chunk
-    end
+	test("test execPath", function()
+		assert.equal(type(process.execPath), 'string')
+		assert(process.execPath)
+	end)
 
-    function onExit(code, signal)
-      p('exit', code, signal)
-      assert(code == 0)
-      assert(signal == 0)
-    end
+	test("test pid", function()
+		assert.equal(type(process.pid), 'number')
+		assert(process.pid)
+	end)
 
-    function onEnd()
-      assert(data:find('TEST1=1'))
-      p('end and found')
-    end
+	test("test version", function()
+		assert.equal(type(process.version), 'string')
+		assert(process.version)
+	end)
 
-    child.stdout:once('end', expect(onEnd))
-    child.stdout:on('data', onStdout)
-    child:on('exit', expect(onExit))
-    child:on('close', expect(onExit))
-  end)
+	test("test versions", function()
+		assert.equal(type(process.versions), 'table')
+		assert(process.versions.lua)
+		assert(process.versions.uv)
+	end)
 
-  test('invalid command', function(expect)
-    local child, onError
+	test("test stdin", function()
+		assert.equal(type(process.stdin), 'table')
+	end)
 
-    -- disable on windows, bug in libuv
-    --if os.type() == 'win32' then return end
+	test("test stdout", function()
+		assert.equal(type(process.stdout), 'table')
+		process.stdout:write("test stdout\r\n")
+	end)
 
-    function onError(err)
-      p('error', err)
-      assert(err)
-    end
+	test("test stderr", function()
+		assert.equal(type(process.stderr), 'table')
+		process.stderr:write("test stderr\r\n")
+	end)	
 
-    child = spawn('skfjsldkfjskdfjdsklfj')
-    child:on('error', expect(onError))
-    child.stdout:on('error', expect(onError))
-    child.stderr:on('error', expect(onError))
-  end)
+	test('signal usr1,usr2,hup', function(expect)
+	    local onHUP, onUSR1, onUSR2
+	    if os.platform() == 'win32' then 
+	    	assert(true)
 
-  test('invalid command verify exit callback', function(expect)
-    local child, onExit, onClose
+	    	return 
+	    end
+	    
+	    function onHUP()  print('sighup');  process:removeListener('sighup',  onHUP)  end
+	    function onUSR1() print('sigusr1'); process:removeListener('sigusr1', onUSR1) end
+	    function onUSR2() print('sigusr2'); process:removeListener('sigusr2', onUSR2) end
 
-    -- disable on windows, bug in libuv
-    --if os.type() == 'win32' then return end
+	    process:on('sighup',  expect(onHUP))
+	    process:on('sigusr1', expect(onUSR1))
+	    process:on('sigusr2', expect(onUSR2))
 
-    function onExit() p('exit') end
-    function onClose() p('close') end
-
-    child = spawn('skfjsldkfjskdfjdsklfj')
-    child:on('exit', expect(onExit))
-    child:on('close', expect(onClose))
-  end)
-
-  test('process.env pairs', function()
-    local key = "LUVIT_TEST_VARIABLE_1"
-    local value = "TEST1"
-    local iterate, found
-
-    function iterate()
-      for k, v in pairs(process.env) do
-        --p(k, v)
-        if k == key and v == value then found = true end
-      end
-    end
-
-    process.env[key] = value
-    found = false
-    iterate()
-    assert(found)
-
-    process.env[key] = nil
-    found = false
-    iterate()
-    assert(process.env[key] == nil)
-    assert(found == false)
-  end)
-
-  test('child process no stdin', function(expect)
-    local child, onData, options
-
-    options = {
-      stdio = {
-        nil,
-        net.Socket:new({ handle = uv.new_pipe(false) }),
-        net.Socket:new({ handle = uv.new_pipe(false) })
-      }
-    }
-
-    function onData(data) 
-      p('data', data) 
-    end
-
-    if os.type() == 'win32' then
-      child = spawn('cmd.exe', {'/C', 'set'}, options)
-    else
-      child = spawn('env', {}, options)
-    end
-    child:on('data', onData)
-    child:on('exit', expect(function() 
-      p('exit')
-    end))
-    child:on('close', expect(function()
-      p('close')
-    end))
-  end)
-
-  test('child process (no stdin, no stderr, stdout) with close', function(expect)
-    local child, onData, options
-
-    options = {
-      stdio = {
-        nil,
-        net.Socket:new({ handle = uv.new_pipe(false) }),
-        nil
-      }
-    }
-
-    function onData(data) 
-      p('data', data) 
-    end
-
-    if os.type() == 'win32' then
-      child = spawn('cmd.exe', {'/C', 'set'}, options)
-    else
-      child = spawn('env', {}, options)
-    end
-    child:on('data', onData)
-    child:on('close', expect(function(exitCode) 
-      p('close', exitCode)
-      assert(exitCode == 0) 
-    end))
-  end)
+	    process.kill(process.pid, 'sighup')
+	    process.kill(process.pid, 'sigusr1')
+	    process.kill(process.pid, 'sigusr2')
+  	end)
+	
 end)
 
+run_loop()

@@ -1,126 +1,301 @@
 /*
-*  Copyright 2015 The Lnode Authors. All Rights Reserved.
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-*
-*/
+ *  Copyright 2015 The Lnode Authors. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 #include "luv.h"
 
 #include "lthreadpool.h"
 
+
+//////////////////////////////////////////////////////////////////////////
+// thread arg
+
+static int luv_thread_arg_set(lua_State* L, luv_thread_arg_t* args, int idx, int top, int flags) {
+  int i;
+  idx = idx > 0 ? idx : 1;
+  i = idx;
+  while (i <= top && i <= LUV_THREAD_MAXNUM_ARG + idx)
+  {
+    luv_val_t *arg = args->argv + i - idx;
+    arg->type = lua_type(L, i);
+    switch (arg->type)
+    {
+    case LUA_TNIL:
+      break;
+    case LUA_TBOOLEAN:
+      arg->val.boolean = lua_toboolean(L, i);
+      break;
+    case LUA_TNUMBER:
+      arg->val.num = lua_tonumber(L, i);
+      break;
+    case LUA_TLIGHTUSERDATA:
+      arg->val.userdata = lua_touserdata(L, i);
+      break;
+    case LUA_TSTRING:
+    {
+      const char* p = lua_tolstring(L, i, &arg->val.str.len);
+      arg->val.str.base = (const char*)malloc(arg->val.str.len);
+      if (arg->val.str.base == NULL)
+      {
+        perror("out of memory");
+        return 0;
+      }
+      memcpy((void*)arg->val.str.base, p, arg->val.str.len);
+      break;
+    }
+    case LUA_TUSERDATA:
+    default:
+      fprintf(stderr, "Error: thread arg not support type '%s' at %d",
+        lua_typename(L, arg->type), i);
+      exit(-1);
+      break;
+    }
+    i++;
+  }
+  args->argc = i - idx;
+  return args->argc;
+}
+
+static void luv_thread_arg_clear(lua_State* L, luv_thread_arg_t* args, int flags) {
+  int i;
+  if (args->argc == 0)
+    return;
+
+  for (i = 0; i < args->argc; i++) {
+    const luv_val_t* arg = args->argv + i;
+    switch (arg->type) {
+    case LUA_TSTRING:
+      free((void*)arg->val.str.base);
+      break;
+    case LUA_TUSERDATA:
+    default:
+      break;
+    }
+  }
+  memset(args, 0, sizeof(*args));
+  args->argc = 0;
+}
+
+static int luv_thread_arg_push(lua_State* L, const luv_thread_arg_t* args, int flags) {
+  int i = 0;
+  while (i < args->argc) {
+    const luv_val_t* arg = args->argv + i;
+    switch (arg->type) {
+    case LUA_TNIL:
+      lua_pushnil(L);
+      break;
+    case LUA_TBOOLEAN:
+      lua_pushboolean(L, arg->val.boolean);
+      break;
+    case LUA_TLIGHTUSERDATA:
+      lua_pushlightuserdata(L, arg->val.userdata);
+      break;
+    case LUA_TNUMBER:
+      lua_pushnumber(L, arg->val.num);
+      break;
+    case LUA_TSTRING:
+      lua_pushlstring(L, arg->val.str.base, arg->val.str.len);
+      break;
+    case LUA_TUSERDATA:
+    default:
+      fprintf(stderr, "Error: thread arg not support type %s at %d",
+        lua_typename(L, arg->type), i + 1);
+    }
+    i++;
+  };
+  return i;
+}
+
 //////////////////////////////////////////////////////////////////////////
 // message queue
 
-typedef struct luv_msg_s
+typedef struct queue_message_s
 {
 	luv_thread_arg_t arg;
-	struct luv_msg_s* next;
-} luv_msg_t;
+	struct queue_message_s* next;
+} queue_message_t;
 
 /** 
  * 
  * 代表一个消息队列。
  */
-typedef struct luv_queue_s
+typedef struct queue_s
 {
-	char* name;
-	luv_msg_t* msg_head;
-	luv_msg_t* msg_tail;
-	int limit;
-	int count;
-	uv_mutex_t lock;
-	uv_cond_t send_sig;
-	uv_cond_t recv_sig;
-	struct luv_queue_s* prev;
-	struct luv_queue_s* next;
-	int refs;
-	int bucket;
-	uv_async_t async;
-	int async_cb;       /* ref, run in main, call when async message received, NYI */
-	lua_State* L;       /* vm in main */
+	char* name;			/* queue name */
+	int async_callback; /* ref, call when async message received */
+	int bucket;			/* bucket */
+	int _msg_count;		/* message _msg_count */
+	int _msg_limit;		/* message limit */
+	int _ref_count;		/* refs */
 
-} luv_queue_t;
+	lua_State* L;       /* Lua vm */
+	queue_message_t* _msg_head;
+	queue_message_t* _msg_tail;
+
+	struct queue_s* next; 
+	struct queue_s* prev;
+
+	uv_async_t async;		/* async handler */
+	uv_cond_t  recv_sig;	/* recv cond  */
+	uv_cond_t  send_sig;	/* send cond */
+	uv_mutex_t lock;		/* lock */
+
+} queue_t;
 
 
-static void luv_queues_detach(luv_queue_t* q);
-static luv_msg_t* luv_queue_recv(luv_queue_t* queue, int timeout);
+//////////////////////////////////////////////////////////////////////////
+// queue
 
-static void luv_queue_message_release(luv_msg_t* msg)
+static void queue_list_remove(queue_t* queue);
+static queue_message_t* 
+			queue_recv	(queue_t* queue, int timeout);
+static int  queue_lock	(queue_t* queue);
+static int  queue_unlock(queue_t* queue);
+static long queue_addref(queue_t* queue);
+static long queue_unref (queue_t* queue);
+
+static queue_message_t* queue_message_pop(queue_t* queue)
 {
+	if (queue == NULL || queue->_msg_count <= 0) {
+		return NULL;
+	}
+
+	queue_message_t* msg = queue->_msg_head;
 	if (msg) {
-		luv_thread_arg_clear(&(msg->arg));
-		free(msg);
-		msg = NULL;
+		queue->_msg_head = msg->next;
+		queue->_msg_count--;
+		
+		msg->next = NULL;
+
+		if (queue->_msg_head == NULL) {
+			queue->_msg_tail = NULL;
+			queue->_msg_count = 0;
+		}
+	}
+	
+	uv_cond_signal(&queue->send_sig);
+
+	return msg;
+}
+
+static int queue_message_put(queue_t* queue, queue_message_t* msg)
+{
+	if (queue == NULL || msg == NULL) {
+		return -1;
+	}
+
+	msg->next = NULL;
+
+	// tail
+	if (queue->_msg_tail) {
+		queue->_msg_tail->next = msg;
+	}
+	queue->_msg_tail = msg;
+
+	// head
+	if (queue->_msg_head == NULL) {
+		queue->_msg_head = msg;
+	}
+
+	queue->_msg_count++;
+	uv_cond_signal(&queue->recv_sig);
+	return 0;
+}
+
+static void queue_message_release(queue_t* queue, queue_message_t* message)
+{
+	lua_State* L = queue->L;
+	if (L == NULL) {
+		printf("null L");
+		return;
+	}
+
+	if (message) {
+		luv_thread_arg_clear(L, &(message->arg), 0);
+		free(message);
+		message = NULL;
 	}
 }
 
-static void luv_queue_async_callback(uv_async_t *handle)
+static void queue_async_callback(uv_async_t *handle)
 {
-	luv_queue_t* queue = handle->data;
+	if (handle == NULL) {
+		return;
+	}
+
+	queue_t* queue = (queue_t*)handle->data;
 	if (queue == NULL) {
-		printf("queue");
+		printf("null queue");
 		return;
 	}
 
 	lua_State* L = queue->L;
 	if (L == NULL) {
-		printf("L");
+		printf("null L");
 		return;
 	}
 
+	queue_addref(queue);
+
 	while (1) {
-		luv_msg_t* msg = luv_queue_recv(queue, 0);
-		if (msg == NULL) {
+		queue_message_t* message = queue_recv(queue, 0);
+		if (message == NULL) {
 			break;
 		}
 
 		// callback
-		lua_rawgeti(L, LUA_REGISTRYINDEX, queue->async_cb);
+		lua_rawgeti(L, LUA_REGISTRYINDEX, queue->async_callback);
 		if (lua_isnil(L, -1)) {
-			luv_queue_message_release(msg);
+			queue_message_release(queue, message);
 			continue;
 		}
 
 		// args
-		int ret = luv_thread_arg_push(L, &(msg->arg));
-		luv_queue_message_release(msg);
-		msg = NULL;
-
-		// call
-		if (lua_pcall(L, ret, 0, 0)) {
+		int argc = luv_thread_arg_push(L, &(message->arg), 0);
+		if (lua_pcall(L, argc, 0, 0)) {
 			fprintf(stderr, "Uncaught Error in thread async: %s\n", lua_tostring(L, -1));
 		}
+
+		queue_message_release(queue, message);
+		message = NULL;
 	}
+
+	queue_unref(queue);
 }
 
-static luv_queue_t* luv_queue_create(const char* name, int limit)
+static queue_t* queue_create(const char* name, int limit)
 {
-	if (name == NULL) {
+	if (name == NULL || *name == '\0') {
 		return NULL;
 	}
 
 	size_t name_len = strlen(name);
-	luv_queue_t* queue = (luv_queue_t*)malloc(sizeof(luv_queue_t) + name_len + 1);
-	queue->name = (char*)queue + sizeof(luv_queue_t);
-	memcpy(queue->name, name, name_len + 1);
+	queue_t* queue = (queue_t*)malloc(sizeof(queue_t) + name_len + 1);
+	queue->name = (char*)queue + sizeof(queue_t);
 
-	queue->msg_head = queue->msg_tail = NULL;
-	queue->limit = limit;
-	queue->count = 0;
-	queue->prev = queue->next = NULL;
-	queue->refs = 1;
+	memcpy(queue->name, name, name_len + 1);
+	queue->_msg_count 	= 0;
+	queue->_msg_head 	= NULL;
+	queue->_msg_limit 	= limit;
+	queue->_msg_tail 	= NULL;
+	queue->_ref_count 	= 1;
+	queue->next 		= NULL;
+	queue->prev 		= NULL;
 
 	uv_mutex_init(&queue->lock);
+
 	uv_cond_init(&queue->send_sig);
 	uv_cond_init(&queue->recv_sig);
 
@@ -128,117 +303,79 @@ static luv_queue_t* luv_queue_create(const char* name, int limit)
 	return queue;
 }
 
-static void luv_queue_destroy(luv_queue_t* queue)
+static long queue_addref(queue_t* queue)
+{
+	long refs = -1;
+	if (queue) {
+		queue_lock(queue);
+		refs = ++queue->_ref_count;
+		queue_unlock(queue);
+	}
+	return refs;
+}
+
+static int queue_destroy(queue_t* queue)
 {
 	if (queue == NULL) {
-		return;
+		return -1;
 	}
 
-	luv_msg_t *msgs = queue->msg_head, *last = NULL;
-	// printf("queue_destroy: %s\n", queue->name);
-	free(queue);
+	// close async
+	if (queue->async_callback != LUA_REFNIL) {
+		uv_close((uv_handle_t*)&queue->async, NULL);
+		queue->async_callback = LUA_REFNIL;
+	}
 
+	// clear message
+	queue_message_t *msgs = queue->_msg_head;
+	queue_message_t *last = NULL;
+
+	// printf("queue_destroy: %s\n", queue->name);
 	while (msgs) {
 		last = msgs;
 		msgs = msgs->next;
-
-		luv_queue_message_release(last);
-	}
-}
-
-static void luv_queue_lock(luv_queue_t* q)
-{
-	uv_mutex_lock(&q->lock);
-}
-
-static void luv_queue_unlock(luv_queue_t* q)
-{
-	uv_mutex_unlock(&q->lock);
-}
-
-static long luv_queue_acquire(luv_queue_t* queue)
-{
-	long refs;
-	luv_queue_lock(queue);
-	refs = ++queue->refs;
-	luv_queue_unlock(queue);
-	// printf("queue_acquire: %s, refs=%d\n", q->name, q->refs);
-	return refs;
-}
-
-static long luv_queue_release(luv_queue_t* queue)
-{
-	long refs;
-	luv_queue_lock(queue);
-	refs = --queue->refs;
-	printf("queue_release: %s, refs=%d\n", queue->name, queue->refs);
-
-	if (refs == 0) {
-		luv_queues_detach(queue);
+		queue_message_release(queue, last);
 	}
 
-	luv_queue_unlock(queue);
-	if (refs == 0) {
-		luv_queue_destroy(queue);
-	}
-	return refs;
+	uv_mutex_destroy(&queue->lock);
+
+	free(queue);
+	queue = NULL;
+	return 0;	
 }
 
-static int luv_queue_send(luv_queue_t* queue, luv_msg_t* msg, int timeout)
+static int queue_lock(queue_t* queue)
 {
-	luv_queue_lock(queue);
-
-	// wait
-	while (timeout != 0 && queue->limit >= 0 && queue->count + 1 > queue->limit) {
-		if (timeout > 0) {
-			int64_t waittime = timeout;
-			waittime = waittime * 1000000L;
-
-			if (uv_cond_timedwait(&queue->send_sig, &queue->lock, waittime) != 0) {
-				break;
-			}
-
-		} else {
-			uv_cond_wait(&queue->send_sig, &queue->lock);
-		}
+	if (queue) {
+		uv_mutex_lock(&queue->lock);
 	}
-
-	// printf("queue: %d/%d", queue->limit, queue->count);
-
-	if (queue->limit < 0 || queue->count + 1 <= queue->limit) {
-		msg->next = NULL;
-		if (queue->msg_tail) {
-			queue->msg_tail->next = msg;
-		}
-
-		queue->msg_tail = msg;
-		if (queue->msg_head == NULL) {
-			queue->msg_head = msg;
-		}
-
-		queue->count++;
-		uv_cond_signal(&queue->recv_sig);
-
-	} else {
-		msg = NULL;
-	}
-
-	luv_queue_unlock(queue);
-	return msg ? 1 : 0;
+	return 0;
 }
 
-static luv_msg_t* luv_queue_recv(luv_queue_t* queue, int timeout)
+/**
+ * @param timeout 0 表示立即返回, 负数表示一直等待
+ */
+static queue_message_t* queue_recv(queue_t* queue, int timeout)
 {
-	luv_msg_t* msg = NULL;
+	if (queue == NULL) {
+		return NULL;
+	}
 
-	luv_queue_lock(queue);
-	if (queue->limit >= 0) {
-		queue->limit++;
+	queue_message_t* msg = NULL;
+
+	queue_lock(queue);
+	
+	if (queue->_msg_limit >= 0) {
+		queue->_msg_limit++;
 		uv_cond_signal(&queue->send_sig);
 	}
 
 	// wait
-	while (timeout != 0 && queue->count <= 0) {
+	while (timeout != 0) {
+		if (queue->_msg_count > 0) {
+			break;
+		}
+
 		if (timeout > 0) {
 			int64_t waittime = timeout;
 			waittime = waittime * 1000000L;
@@ -251,51 +388,141 @@ static luv_msg_t* luv_queue_recv(luv_queue_t* queue, int timeout)
 		}
 	}
 
-	if (queue->count > 0) {
-		msg = queue->msg_head;
-		if (msg) {
-			queue->msg_head = msg->next;
-			if (queue->msg_head == NULL) {
-				queue->msg_tail = NULL;
-			}
-			msg->next = NULL;
-		}
-		queue->count--;
-		uv_cond_signal(&queue->send_sig);
+	// pop
+	msg = queue_message_pop(queue);
+
+	if (queue->_msg_limit > 0) {
+		queue->_msg_limit--;
 	}
 
-	if (queue->limit > 0) {
-		queue->limit--;
-	}
-
-	luv_queue_unlock(queue);
+	queue_unlock(queue);
 	return msg;
 }
 
-#define BUCKET_SIZE 16
-struct luv_queue_entry_t
+/**
+ * @param msg
+ * @param timeout 0 表示立即返回, 负数表示一直等待
+ */
+static int queue_send(queue_t* queue, queue_message_t* msg, int timeout)
 {
-	luv_queue_t* head;
-	luv_queue_t* tail;
+	if (queue == NULL || msg == NULL) {
+		return 0;
+	}
+
+	queue_lock(queue);
+
+	// wait
+	while (timeout != 0) {
+		if (queue->_msg_limit < 0 || queue->_msg_count < queue->_msg_limit) {
+			break;
+		}
+		
+		if (timeout > 0) {
+			int64_t waittime = timeout;
+			waittime = waittime * 1000000L;
+			if (uv_cond_timedwait(&queue->send_sig, &queue->lock, waittime) != 0) {
+				break;
+			}
+
+		} else {
+			uv_cond_wait(&queue->send_sig, &queue->lock);
+		}
+	}
+
+	// printf("queue: %d/%d", queue->_msg_limit, queue->_msg_count);
+	if (queue->_msg_limit < 0 || queue->_msg_count < queue->_msg_limit) {
+		queue_message_put(queue, msg);
+
+	} else {
+		msg = NULL;
+	}
+
+	queue_unlock(queue);
+	return msg ? 1 : 0;
+}
+
+static int queue_unlock(queue_t* queue)
+{
+	if (queue) {
+		uv_mutex_unlock(&queue->lock);
+	}
+	return 0;	
+}
+
+static long queue_unref(queue_t* queue)
+{
+	if (queue == NULL) {
+		return -1;
+	}
+
+	long refs = -1;
+	queue_lock(queue);
+	refs = --queue->_ref_count;
+	queue_unlock(queue);
+
+	if (refs == 0) {
+		queue_list_remove(queue);
+		queue_destroy(queue);
+	}
+
+	return refs;
+}
+
+///////////////////////////////////////////////////////////////
+// queue list
+
+#define BUCKET_SIZE 16
+
+struct queue_entry_t
+{
+	queue_t* head;
+	queue_t* tail;
 };
 
-static struct luv_queue_entry_t luv_queue_list[BUCKET_SIZE];
-static uv_mutex_t luv_queues_lock; // = PTHREAD_MUTEX_INITIALIZER;
+static int 					s_queue_count = -1;
+static struct queue_entry_t s_queue_list[BUCKET_SIZE];
+static uv_mutex_t 			s_queue_list_lock;
 
-static int luv_queue_name_hash(const char* name)
+static int queue_list_init()
 {
+	if (s_queue_count < 0) {
+		// printf("queue_list_init\r\n");
+
+		uv_mutex_init(&s_queue_list_lock);
+
+		s_queue_count = 0;
+		memset(s_queue_list, 0, sizeof(s_queue_list));
+	}
+
+	return 0;
+}
+
+static int queue_list_hash(const char* name)
+{
+	if (name == NULL) {
+		return 0;
+	}
+
 	int hash = 0;
 	char ch;
 	while ((ch = *name++) != 0) {
 		hash += ch;
 		hash &= 0xff;
 	}
-	return hash & (BUCKET_SIZE - 1);
+
+	return hash % BUCKET_SIZE;
 }
 
-static luv_queue_t* luv_queue_bucket_search(int bucket, const char* name)
+static queue_t* queue_list_search(int bucket, const char* name)
 {
-	luv_queue_t* queue = luv_queue_list[bucket].head;
+	if (bucket < 0 || bucket >= BUCKET_SIZE) {
+		return NULL;
+
+	} else if (name == NULL) {
+		return NULL;
+	}
+
+	queue_t* queue = s_queue_list[bucket].head;
 	for (; queue; queue = queue->next) {
 		if (strcmp(queue->name, name) == 0) {
 			return queue;
@@ -304,273 +531,97 @@ static luv_queue_t* luv_queue_bucket_search(int bucket, const char* name)
 	return NULL;
 }
 
-static int luv_queues_add(luv_queue_t* queue)
+static int queue_list_add(queue_t* queue)
 {
 	if (queue == NULL) {
 		return 0;
 	}
 
-	int hash = luv_queue_name_hash(queue->name);
-	uv_mutex_lock(&luv_queues_lock);
-	if (luv_queue_bucket_search(hash, queue->name)) {
-		uv_mutex_unlock(&luv_queues_lock);
+	int hash = queue_list_hash(queue->name);
+	//printf("queue_list_add: %s:%d\n", queue->name, hash);
+
+	uv_mutex_lock(&s_queue_list_lock);
+	if (queue_list_search(hash, queue->name)) {
+		uv_mutex_unlock(&s_queue_list_lock);
 		return 0;
 	}
 
-	queue->next = NULL;
-	queue->prev = luv_queue_list[hash].tail;
-	if (luv_queue_list[hash].tail) {
-		luv_queue_list[hash].tail->next = queue;
+	struct queue_entry_t* entry = &s_queue_list[hash];
+
+	queue->next 	= NULL;
+	queue->bucket 	= hash;
+	queue->prev 	= entry->tail;
+
+	// tail
+	if (entry->tail) {
+		entry->tail->next = queue;
+	}
+	entry->tail = queue;
+
+	// head
+	if (!entry->head) {
+		entry->head = queue;
 	}
 
-	luv_queue_list[hash].tail = queue;
-	if (!luv_queue_list[hash].head) {
-		luv_queue_list[hash].head = queue;
-	}
+	s_queue_count++;
 
-	queue->bucket = hash;
-	uv_mutex_unlock(&luv_queues_lock);
-	// printf("queues_add: %s bucket=%d\n", queue->name, hash);
+	uv_mutex_unlock(&s_queue_list_lock);
 	return 1;
 }
 
-static luv_queue_t* luv_queues_get(const char* name)
+static queue_t* queue_list_get(const char* name)
 {
 	if (name == NULL) {
 		return NULL;
 	}
 
-	int hash = luv_queue_name_hash(name);
-	luv_queue_t* queue = NULL;
-	uv_mutex_lock(&luv_queues_lock);
-	queue = luv_queue_bucket_search(hash, name);
+	int hash = queue_list_hash(name);
+	queue_t* queue = NULL;
+
+	uv_mutex_lock(&s_queue_list_lock);
+	queue = queue_list_search(hash, name);
 	if (queue) {
-		luv_queue_acquire(queue);
+		queue_addref(queue);
 	}
-	uv_mutex_unlock(&luv_queues_lock);
+	uv_mutex_unlock(&s_queue_list_lock);
 	return queue;
 }
 
-static void luv_queues_detach(luv_queue_t* queue)
+/** 删除一个消息队列. */
+static void queue_list_remove(queue_t* queue)
 {
 	if (queue == NULL) {
 		return;
 	}
 
-	// printf("queues_detach: %s, bucket=%d\n", queue->name, queue->bucket);
-	if (queue->prev) {
-		queue->prev->next = queue->next;
-
-	} else {
-		luv_queue_list[queue->bucket].head = queue->next;
+	queue_t* prev = queue->prev;
+	queue_t* next = queue->next;
+	int bucket    = queue->bucket;
+	if (bucket < 0 || bucket >= BUCKET_SIZE) {
+		return;
 	}
 
-	if (queue->next) {
-		queue->next->prev = queue->prev;
+	uv_mutex_lock(&s_queue_list_lock);
+
+	if (prev) {
+		prev->next = next;
 
 	} else {
-		luv_queue_list[queue->bucket].tail = queue->prev;
+		s_queue_list[bucket].head = next;
+	}
+
+	if (next) {
+		next->prev = prev;
+
+	} else {
+		s_queue_list[bucket].tail = prev;
 	}
 
 	queue->next = queue->prev = NULL;
 	queue->bucket = -1;
-}
 
-static void luv_queue_lua_usage(lua_State* L, const char* usage)
-{
-	lua_pushstring(L, usage);
-	lua_error(L);
-}
+	s_queue_count--;
 
-static const char* luv_queue_lua_arg_string(lua_State* L, int index, const char *def_val, const char* usage)
-{
-	if (lua_gettop(L) >= index) {
-		const char* str = lua_tostring(L, index);
-		if (str) {
-			return str;
-		}
-
-	} else if (def_val) {
-		return def_val;
-	}
-
-	luv_queue_lua_usage(L, usage);
-	return NULL;
-}
-
-static int luv_queue_lua_arg_integer(lua_State* L, int index, int optional, int def_val, const char* usage)
-{
-	if (lua_gettop(L) >= index) {
-		if (lua_isnumber(L, index)) {
-			return (int)lua_tointeger(L, index);
-		}
-
-	} else if (optional) {
-		return def_val;
-	}
-
-	luv_queue_lua_usage(L, usage);
-	return 0;
-}
-
-static luv_queue_t* luv_queue_check_queue_t(lua_State* L)
-{
-	luv_queue_t* q = (luv_queue_t*)lua_topointer(L, 1);
-	if (q == NULL) {
-		lua_pushstring(L, "invalid queue object");
-		lua_error(L);
-	}
-	return q;
-}
-
-#define LUV_QUEUE_METATABLE_NAME "luv_chan_metatable"
-static const char* queue_usage_send = "chan:send(string|number|boolean)";
-static const char* queue_usage_recv = "chan:recv(timeout = -1)";
-static const char* queue_usage_new = "chan.new(name, limit = 0, onmessage)";
-static const char* queue_usage_get = "chan get(name)";
-
-static int luv_queue_channel_send(lua_State* L)
-{
-	int type, ret;
-	luv_msg_t* msg;
-	luv_queue_t* queue = luv_queue_check_queue_t(L);
-	if (lua_gettop(L) < 2) {
-		luv_queue_lua_usage(L, queue_usage_send);
-	}
-
-	msg = (luv_msg_t*)malloc(sizeof(luv_msg_t));
-	ret = luv_thread_arg_set(L, &msg->arg, 2, lua_gettop(L), 1);
-	// printf("chan_send: %d\r\n", ret);
-
-	ret = luv_queue_send(queue, msg, 0);
-	if (!ret) {
-		luv_queue_message_release(msg);
-
-	} else {
-		if (queue->async_cb != LUA_REFNIL) {
-			uv_async_send(&(queue->async));
-		}
-	}
-
-	lua_pushboolean(L, ret);
-	return 1;
-}
-
-static int luv_queue_channel_recv(lua_State* L)
-{
-	luv_queue_t* q = luv_queue_check_queue_t(L);
-	int timeout = luv_queue_lua_arg_integer(L, 2, 1, -1, queue_usage_recv);
-	luv_msg_t* msg = luv_queue_recv(q, timeout);
-	if (msg) {
-		int ret = luv_thread_arg_push(L, &(msg->arg));
-		luv_queue_message_release(msg);
-		return ret;
-
-	} else {
-		lua_pushnil(L);
-	}
-	return 1;
-}
-
-static int luv_queue_channel_stop(lua_State* L)
-{
-	luv_queue_t* queue = luv_queue_check_queue_t(L);
-
-	uv_mutex_lock(&luv_queues_lock);
-	if (queue->async_cb != LUA_REFNIL) {
-		uv_close((uv_handle_t*)&queue->async, NULL);
-		queue->async_cb = LUA_REFNIL;
-	}
-	uv_mutex_unlock(&luv_queues_lock);
-	return 0;
-}
-
-static int luv_queue_channel_gc(lua_State* L)
-{
-	luv_queue_t* queue = luv_queue_check_queue_t(L);
-	printf("chan_gc: %s, refs=%d\n", queue->name, queue->refs);
-
-	uv_mutex_lock(&luv_queues_lock);
-	if (queue->async_cb != LUA_REFNIL) {
-		uv_close((uv_handle_t*)&queue->async, NULL);
-		queue->async_cb = LUA_REFNIL;
-	}
-
-	luv_queue_release(queue);
-	uv_mutex_unlock(&luv_queues_lock);
-	return 0;
-}
-
-static int luv_queue_channel_push_queue(lua_State* L, luv_queue_t* queue)
-{
-	lua_pushlightuserdata(L, queue);
-	luaL_getmetatable(L, LUV_QUEUE_METATABLE_NAME);
-	lua_setmetatable(L, -2);
-	return 0;
-}
-
-static int luv_queue_channel_new(lua_State* L)
-{
-	const char* name = luv_queue_lua_arg_string(L, 1, NULL, queue_usage_new);
-	int limit = luv_queue_lua_arg_integer(L, 2, 1, 0, queue_usage_new);
-	luv_queue_t* queue = luv_queue_create(name, limit);
-
-	if (lua_gettop(L) >= 3) {
-		lua_pushvalue(L, 3);
-		queue->async_cb = luaL_ref(L, LUA_REGISTRYINDEX);
-
-		uv_async_init(luv_loop(L), &queue->async, luv_queue_async_callback);
-		queue->async.data = queue;
-
-	} else {
-		queue->async_cb = LUA_REFNIL;
-		queue->async.data = NULL;
-	}
-
-	queue->L = L;
-
-	if (!luv_queues_add(queue)) {
-		luv_queue_destroy(queue);
-		lua_pushnil(L);
-		lua_pushstring(L, "chan name duplicated");
-		return 2;
-	}
-
-	luv_queue_channel_push_queue(L, queue);
-	return 1;
-}
-
-static int luv_queue_channel_get(lua_State* L)
-{
-	const char* name = luv_queue_lua_arg_string(L, 1, NULL, queue_usage_get);
-	luv_queue_t* queue = luv_queues_get(name);
-	if (queue) {
-		luv_queue_channel_push_queue(L, queue);
-		return 1;
-
-	} else {
-		lua_pushnil(L);
-		lua_pushstring(L, "not found");
-		return 2;
-	}
-};
-
-static const luaL_Reg luv_queue_channel_methods[] = {
-	{ "send", luv_queue_channel_send },
-	{ "recv", luv_queue_channel_recv },
-	{ "stop", luv_queue_channel_stop },
-	{ NULL, NULL }
-};
-
-static void luv_queue_init(lua_State* L) {
-	luaL_newmetatable(L, LUV_QUEUE_METATABLE_NAME);
-
-	lua_pushcfunction(L, luv_queue_channel_gc);
-	lua_setfield(L, -2, "__gc");
-
-	lua_newtable(L);
-	luaL_setfuncs(L, luv_queue_channel_methods, 0);
-	lua_setfield(L, -2, "__index");
-	lua_pop(L, 1);
+	uv_mutex_unlock(&s_queue_list_lock);
 }
 

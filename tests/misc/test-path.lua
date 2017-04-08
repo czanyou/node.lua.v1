@@ -19,10 +19,10 @@ limitations under the License.
 local init = require('init')
 local path = require('path')
 
-local path_base  = require('path/base')
-local deep_equal = require('utils').deep_equal
+local path_base  = require('path')
+local deepEqual = require('assert').isDeepEqual
 
-local isWindows = os.type() == "win32"
+local isWindows = os.platform() == "win32"
 
 -- Test that path is set correctly for the current OS
 if not isWindows then
@@ -195,34 +195,34 @@ require('ext/tap')(function(test)
     assert(path_base.nt:getRoot('d:drive\\relative') == 'd:')
 
     -- test path._splitPath
-    assert(deep_equal({"/", "", ""}, {path_base.posix:_splitPath('/')}))
-    assert(deep_equal({"/", "", "foo"}, {path_base.posix:_splitPath('/foo')}))
-    assert(deep_equal({"/", "", "foo"}, {path_base.posix:_splitPath('/foo/')}))
-    assert(deep_equal({"/", "foo/", "bar"}, {path_base.posix:_splitPath('/foo/bar')}))
-    assert(deep_equal({"/", "foo/", "bar"}, {path_base.posix:_splitPath('/foo/bar/')}))
-    assert(deep_equal({"/", "foo/", "bar.lua"}, {path_base.posix:_splitPath('/foo/bar.lua')}))
-    assert(deep_equal({"", "foo/", "bar.lua"}, {path_base.posix:_splitPath('foo/bar.lua')}))
-    assert(deep_equal({"C:\\", "", ""}, {path_base.nt:_splitPath('C:\\')}))
-    assert(deep_equal({"C:\\", "", "foo"}, {path_base.nt:_splitPath('C:\\foo')}))
-    assert(deep_equal({"C:\\", "", "foo"}, {path_base.nt:_splitPath('C:\\foo\\')}))
-    assert(deep_equal({"C:\\", "foo\\", "bar.lua"}, {path_base.nt:_splitPath('C:\\foo\\bar.lua')}))
-    assert(deep_equal({"d:\\", "foo\\", "bar.lua"}, {path_base.nt:_splitPath('d:\\foo\\bar.lua')}))
-    assert(deep_equal({"", "foo\\", "bar.lua"}, {path_base.nt:_splitPath('foo\\bar.lua')}))
-    assert(deep_equal({"\\\\server\\share\\", "", "bar.lua"}, {path_base.nt:_splitPath('\\\\server\\share\\bar.lua')}))
-    assert(deep_equal({"d:", "drive\\", "relative.lua"}, {path_base.nt:_splitPath('d:drive\\relative.lua')}))
+    assert(deepEqual({"/", "", ""}, {path_base.posix:_splitPath('/')}))
+    assert(deepEqual({"/", "", "foo"}, {path_base.posix:_splitPath('/foo')}))
+    assert(deepEqual({"/", "", "foo"}, {path_base.posix:_splitPath('/foo/')}))
+    assert(deepEqual({"/", "foo/", "bar"}, {path_base.posix:_splitPath('/foo/bar')}))
+    assert(deepEqual({"/", "foo/", "bar"}, {path_base.posix:_splitPath('/foo/bar/')}))
+    assert(deepEqual({"/", "foo/", "bar.lua"}, {path_base.posix:_splitPath('/foo/bar.lua')}))
+    assert(deepEqual({"", "foo/", "bar.lua"}, {path_base.posix:_splitPath('foo/bar.lua')}))
+    assert(deepEqual({"C:\\", "", ""}, {path_base.nt:_splitPath('C:\\')}))
+    assert(deepEqual({"C:\\", "", "foo"}, {path_base.nt:_splitPath('C:\\foo')}))
+    assert(deepEqual({"C:\\", "", "foo"}, {path_base.nt:_splitPath('C:\\foo\\')}))
+    assert(deepEqual({"C:\\", "foo\\", "bar.lua"}, {path_base.nt:_splitPath('C:\\foo\\bar.lua')}))
+    assert(deepEqual({"d:\\", "foo\\", "bar.lua"}, {path_base.nt:_splitPath('d:\\foo\\bar.lua')}))
+    assert(deepEqual({"", "foo\\", "bar.lua"}, {path_base.nt:_splitPath('foo\\bar.lua')}))
+    assert(deepEqual({"\\\\server\\share\\", "", "bar.lua"}, {path_base.nt:_splitPath('\\\\server\\share\\bar.lua')}))
+    assert(deepEqual({"d:", "drive\\", "relative.lua"}, {path_base.nt:_splitPath('d:drive\\relative.lua')}))
 
     -- test path._normalizeArray
     local dotArray = {"foo", ".", "bar"}
     path._normalizeArray(dotArray)
-    assert(deep_equal({"foo", "bar"}, dotArray))
+    assert(deepEqual({"foo", "bar"}, dotArray))
 
     local dotdotArray = {"..", "foo", "..", "bar"}
     path._normalizeArray(dotdotArray)
-    assert(deep_equal({"bar"}, dotdotArray))
+    assert(deepEqual({"bar"}, dotdotArray))
 
     local dotdotRelativeArray = {"..", "foo", "..", "bar"}
     path._normalizeArray(dotdotRelativeArray, true)
-    assert(deep_equal({"..", "bar"}, dotdotRelativeArray))
+    assert(deepEqual({"..", "bar"}, dotdotRelativeArray))
 
     -- test path.normalize
     -- trailing slash
@@ -470,9 +470,9 @@ require('ext/tap')(function(test)
     assert(path_base.nt:resolve('c:foo', 'd:drive\\relative') == 'd:\\drive\\relative')
 
     -- test path._commonParts
-    assert(deep_equal({"var"}, path_base.posix:_commonParts("/var/lib/", "/var")))
-    assert(deep_equal({"foo"}, path_base.posix:_commonParts("/foo/bar/", "/foo/bark/")))
-    assert(deep_equal({"foo", "bar"}, path_base.posix:_commonParts("/foo/bar///", "/foo/bar")))
+    assert(deepEqual({"var"}, path_base.posix:_commonParts("/var/lib/", "/var")))
+    assert(deepEqual({"foo"}, path_base.posix:_commonParts("/foo/bar/", "/foo/bark/")))
+    assert(deepEqual({"foo", "bar"}, path_base.posix:_commonParts("/foo/bar///", "/foo/bar")))
 
     -- test path.relative
     assert(path_base.posix:relative('/var/lib', '/var') == '..')

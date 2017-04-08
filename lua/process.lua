@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,11 +25,13 @@ an instance of EventEmitter.
 local env       = require('env')
 local uv        = require('uv')
 local Emitter   = require('core').Emitter
+local lutils    = require('lutils')
+local lnode     = require('lnode')
 
-local process   = Emitter:new()
+local process   = {}
 local exports   = process
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 -- env
 
 local lenv = { }
@@ -38,7 +41,7 @@ end
 
 setmetatable(lenv, {
     __pairs = function(table)
-        local keys = env.keys()
+        local keys = env.keys() or {}
         local index = 0
         return function(...)
             index = index + 1
@@ -62,105 +65,254 @@ setmetatable(lenv, {
     end
 } )
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 
-local function process_nextTick(...)
-    local timer = require('timer')
+local timer = nil
+
+function process.nextTick(...)
+    if (not timer) then 
+        timer = require('timer') 
+    end
+    
     timer.setImmediate(...)
 end
 
-local function process_kill(pid, signal)
+function process.kill(pid, signal)
     uv.kill(pid, signal or 'sigterm')
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
+-- emitter
 
 local signalWraps = { }
 
-local function process_on(self, _type, listener)
-    if _type == "error" or _type == "exit" then
-        Emitter.on(self, _type, listener)
+process.emitter = nil
 
-    else
-        if not signalWraps[_type] then
-            local signal = uv.new_signal()
-            signalWraps[_type] = signal
-            uv.unref(signal)
-            uv.signal_start(signal, _type, function() self:emit(_type) end)
-        end
-
-        Emitter.on(self, _type, listener)
+function process:emit(event, ...)
+    if (self.emitter) then
+        self.emitter:emit(event, ...)
     end
 end
 
-local function process_exit(self, code)
+function process:exit(code)
     local left = 2
     code = code or 0
 
-    local function onFinish()
+    local _onFinish = function()
         left = left - 1
-        if left > 0 then return end
+        if (left > 0) then 
+            return 
+        end
 
-        self:emit('exit', code)
+        if (self.emitter) then
+            self.emitter:emit('exit', code)
+        end
+
         os.exit(code)
     end
 
-    if (process.stdout) then
-        process.stdout:once('finish', onFinish)
-        process.stdout:_end()
+    self.isExit = true
+
+    local stdout = rawget(self, 'stdout')
+    if (stdout) then
+        stdout:once('finish', _onFinish)
+        stdout:_end()
         
     else 
-        onFinish()
+        _onFinish()
     end
 
-    if (process.stderr) then
-        process.stderr:once('finish', onFinish)
-        process.stderr:_end()
+    local stderr = rawget(self, 'stderr')
+    if (stderr) then
+        stderr:once('finish', _onFinish)
+        stderr:_end()
 
     else 
-        onFinish()
+        _onFinish()
     end
 end
 
-local function process_remove_listener(self, _type, listener)
-    local signal = signalWraps[_type]
-    if not signal then return end
-    signal:stop()
-    uv.close(signal)
-    signalWraps[_type] = nil
+function process:on(event, listener)
+    if (not self.emitter) then
+        self.emitter = Emitter:new()
+    end
 
-    Emitter.removeListener(self, _type, listener)
+    local emitter = self.emitter
+    if (event == "error") or (event == "exit") then
+        emitter:on(event, listener)
+        return
+    end
+
+    if not signalWraps[event] then
+        local signal = uv.new_signal()
+        signalWraps[event] = signal
+        uv.unref(signal)
+        uv.signal_start(signal, event, function() 
+            emitter:emit(event) 
+        end)
+    end
+
+    emitter:on(event, listener)
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
---[[
-exports = { meta = exports }
+function process:once(event, listener)
+    local emitter = self.emitter
+    if (emitter) then
+        emitter:once(event, listener)
+    end
+end
 
-local Emitter = require('core').Emitter
-setmetatable(exports, Emitter.meta)
-if exports.init then exports:init() end
-]]
+function process:removeListener(event, listener)
+    local signal = signalWraps[event]
+    if not signal then 
+        return 
+    end
 
+    signal:stop()
+    uv.close(signal)
+    signalWraps[event] = nil
+
+    if (self.emitter) then
+        self.emitter:removeListener(event, listener)
+    end
+end
+
+-------------------------------------------------------------------------------
 --
-exports.argv        = arg or {}         -- 
+
+exports.arch        = lutils.os_arch    -- 
+exports.argv        = arg               -- 
 exports.chdir       = uv.chdir          -- Changes the current working directory of the process or throws an exception if that fails.
 exports.cwd         = uv.cwd            -- Returns the current working directory of the process.
 exports.env         = lenv              -- An object containing the user environment. See environ(7).
-exports.exepath     = uv.exepath        -- 
+exports.execPath    = uv.exepath()      -- 
 exports.exitCode    = 0                 -- 
+exports.getgid      = uv.getgid         -- 
+exports.getuid      = uv.getuid         -- 
 exports.hrtime      = uv.hrtime         -- Returns the current high-resolution real time
-exports.kill        = process_kill      -- Send a signal to a process. 
-exports.nextTick    = process_nextTick  -- Once the current event loop turn runs to completion, call the callback function.
 exports.now         = uv.now            -- 
 exports.pid         = uv.getpid()       -- The PID of the process.
+exports.platform    = lutils.os_platform
+exports.rootPath    = lnode.NODE_LUA_ROOT
+exports.setgid      = uv.setgid         -- 
+exports.setuid      = uv.setuid         -- 
+exports.umask       = lutils.umask      -- 
 exports.uptime      = uv.uptime         -- Number of seconds Node.lua has been running.
-exports.version     = nil               -- A compiled-in property that exposes NODE_VERSION.
-exports.versions    = nil               -- A property exposing version strings of Node.lua and its dependencies.
--- 
-process.exit        = process_exit
-process.on          = process_on
-process.removeListener = process_remove_listener
+exports.version     = lnode.version     -- A compiled-in property that exposes NODE_VERSION.
+exports.versions    = lnode.versions    -- A property exposing version strings of Node.lua and its dependencies.
 
--- hooks:on('process.exit', utils.bind(process.emit, process, 'exit'))
+-- 
+
+-------------------------------------------------------------------------------
+-- stream
+
+local console = require('console')
+
+local UvStreamWritable = nil
+
+local function _newWritable(pipe)
+    if (UvStreamWritable) then
+        return UvStreamWritable:new(pipe)
+    end
+
+    local Writable  = require('stream').Writable
+    local utils     = require('utils')
+
+    local UvStreamWritable = Writable:extend()
+
+    function UvStreamWritable:initialize(handle)
+        Writable.initialize(self)
+        self.handle = handle
+    end
+
+    function UvStreamWritable:_write(data, callback)
+        uv.write(self.handle, data, callback)
+    end
+
+    return UvStreamWritable:new(pipe)
+end
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+
+local UvStreamReadable = nil
+
+local function _newReadable(pipe)
+    if (UvStreamReadable) then
+        return UvStreamReadable:new(pipe)
+    end
+
+    local Readable  = require('stream').Readable
+    local utils     = require('utils')
+
+    UvStreamReadable = Readable:extend()
+    function UvStreamReadable:initialize(handle)
+        Readable.initialize(self, { highWaterMark = 0 })
+        self._readableState.reading = false
+        self.reading = false
+        self.handle  = handle
+        self:on('pause', utils.bind(self._onPause, self))
+    end
+
+    function UvStreamReadable:_onPause()
+        self._readableState.reading = false
+        self.reading = false
+        uv.read_stop(self.handle)
+    end
+
+    function UvStreamReadable:_read(n)
+        local _onRead = function (err, data)
+            if err then
+                return self:emit('error', err)
+            end
+            self:push(data)
+        end
+
+        if not uv.is_active(self.handle) then
+            self.reading = true
+            uv.read_start(self.handle, _onRead)
+        end
+    end
+
+    return UvStreamReadable:new(pipe)
+end
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+
+local meta = {}
+
+meta.__index = function(self, key)
+    if (key == 'title') then
+        return uv.get_process_title()
+    end
+
+    local ret = rawget(self, key)
+    if (ret ~= nil) then
+        return ret
+    end
+
+    if rawget(self, 'isExit') then
+        return ret
+    end
+
+    if (key == 'stdin') then
+        ret = _newReadable(console.stdin)
+
+    elseif (key == 'stdout') then
+        ret = _newWritable(console.stdout) 
+
+    elseif (key == 'stderr') then
+        ret = _newWritable(console.stderr)  
+    end
+
+    if (ret) then
+        rawset(self, key, ret)
+    end
+    
+    return ret
+end
+
+setmetatable(process, meta)
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
 
 return exports

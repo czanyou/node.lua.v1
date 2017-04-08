@@ -9,12 +9,14 @@ require('ext/tap')(function(test)
       res:on("finish", expect(function()
         p('sending resp finished')
       end))
+
       res:writeHead(200, {
         ["Content-Type"] = "text/plain",
         ["Content-Length"] = #body
       })
       res:finish(body)
     end):listen(8080)
+    
     http.get('http://127.0.0.1:8080', expect(function(resp)
       resp:on('data', p)
       resp:on('end', expect(function()

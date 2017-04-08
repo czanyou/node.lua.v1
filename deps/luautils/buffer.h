@@ -1,14 +1,23 @@
 #ifndef LUTILS_BUFFER_H
 #define LUTILS_BUFFER_H
 
-#define LUV_BUFFER 100
+#include "uv.h"
 
-typedef struct luv_ppp_buffer_s {
+#define LUV_BUFFER_FLAG 100
+
+#define LUV_BUFFER "luv_buffer_t"
+
+typedef struct luv_buffer_s {
 	int   type;
 	char* data;
-	int   size;
+	int   length;
 	int   position;
 	int   limit;
-} luv_ppp_buffer_t;
+	int   flags;
+	int   time_seconds;
+	int   time_useconds;
+	uv_mutex_t* lock;		/* lock */
+
+} luv_buffer_t;
 
 #endif // LUTILS_BUFFER_H

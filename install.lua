@@ -1,51 +1,112 @@
 #!/usr/bin/env lnode
 
 -- 
--- 安装 node.lua 运运环境，包括安装可执行文件到执行目录以及关联相关的 lua 模块目录
+-- 安装 Node.lua 运行环境，包括可执行文件及相关的 Lua 模块
+-- Install the Node.lua runtime environment.
+-- Include executables and related Lua module.
+-- 
 
 local uv     = require('uv')
-local debug  = require('debug')
 local lutils = require('lutils')
 
-local cwd = uv.cwd()
-print('------ Install Node.lua developer tools -------');
-print('Current OS:        [' .. lutils.os_platform() .. ']')
-print('Current Arch:      [' .. lutils.os_arch() .. ']')
-print('Current Work Path: [' .. cwd .. ']')
-print("Current Lua Path:  [" .. package.path .. "]")
+local cwd    = uv.cwd()
 
-local os_type = lutils.os_platform()
+local function printPathList(title, pathList)
+	local tokens = pathList:split(';')
 
--- set env 
-if (os_type == 'Windows') then
-	-- 关联 lua core 环境
-	local LUA_PATH = cwd .. '/lua/?.lua;' .. cwd .. '/lua/?/init.lua'
-	package.path = LUA_PATH .. ';./?.lua;./?/init.lua';
-
-	local init = require('init')
-	local path = require('path')
-
-	print("Current Lua Path: " .. package.path)
-
-	-- Windows 下直接把当前开发目录添加到环境变量
-	local root = path.dirname(cwd)
-	local vision = path.join(root, '/vision.lua')
-	LUA_PATH = LUA_PATH .. ';' .. vision .. '/lua/?.lua;' .. vision .. '/lua/?/init.lua'
-	LUA_PATH = LUA_PATH .. ';./?.lua;./?/init.lua';
-	LUA_PATH = LUA_PATH:gsub('/', '\\')
-	print('')
-	print('设置环境变量:')
-	print('SET LUA_PATH=' .. LUA_PATH)
-
-	local child = require('child_process')
-	child.spawn('SETX', { 'LUA_PATH', '' .. LUA_PATH .. '' }, {})
-
-elseif (os_type == 'Linux') then
-	local init  = require('init')
-	local path  = require('path')
-	local child = require('child_process')
+	print(title)
+	for k, v in pairs(tokens) do
+		print(k, v)
+	end
+	print('------ end list ------\n')
 end
 
-print('~~~~~~ Complete ~~~~~~');
+-- Update current user 'Path' environment variable (Windows Only)
+local function updatePathEnvironment(isAdd)
+	local init  = require('init')
+	local utils = require('utils')
+	local path  = require('path')
+	local fs    = require('fs')
 
-run_loop()
+	local pathname = path.join(cwd, 'bin')
+	if (not fs.existsSync(pathname)) then
+		return
+	end
+
+	-- Query the value of 'HKEY_CURRENT_USER\\Environment\\Path'
+	local tokens = nil
+	local file = io.popen('REG QUERY HKEY_CURRENT_USER\\Environment /v Path')
+	if (file) then
+		local result = file:read("*all")
+		if (result) then
+	 		tokens = result:split('\n') or {}
+		end
+	end
+
+	if (not tokens) then
+		return
+	end
+
+	local pos = 3
+	for index, token in pairs(tokens) do
+		if (token:startsWith('HKEY_CURRENT_USER')) then
+			pos = index + 1
+			break
+		end
+	end
+
+	-- KEY TYPE VALUE
+	local line = tokens[pos] or ""
+	_, offset, key, mode, value = line:find("[ ]+([^ ]+)[ ]+([^ ]+)[ ]+([^\n]+)")
+
+	local items = {}
+	if (value) then
+		items = value:split(';') or {}
+	end
+
+	local skip = false
+	local paths = {}
+	for index, token in pairs(items) do
+		token = token:trim()
+		if (token == pathname) then
+			skip = true;
+		end
+
+		if (#token > 0) then
+			table.insert(paths, token)
+		end
+	end
+
+	if (not skip) then
+		table.insert(paths, pathname)
+		local BIN_PATH = table.concat(paths, ";")
+		os.execute('SETX PATH "' .. BIN_PATH .. '"')
+		printPathList("SET BIN_PATH=", BIN_PATH)
+		
+	else 
+		local BIN_PATH = table.concat(paths, ";")
+		printPathList("SET BIN_PATH=", BIN_PATH)
+	end
+end
+
+-------------------------------------------------------------------------------
+
+local osType = lutils.os_platform()
+local osArch = lutils.os_arch()
+
+print('')
+print('------ Install Node.lua Runtime -------')
+print('OS:     [' .. osType .. ']')
+print('Arch:   [' .. osArch .. ']')
+print('Work:   [' .. cwd .. ']')
+print('------\n')
+
+if (osType == 'win32') then
+	-- Add the bin directory under the current directory to the system Path environment variable
+	updatePathEnvironment(true)
+end
+
+print('Install Complete!\n')
+
+uv.run()
+uv.loop_close()

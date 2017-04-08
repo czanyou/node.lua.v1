@@ -11,7 +11,6 @@ Node.lua 测试用例
 - posix 专门测试 posix 环境
 - tls 专门测试 openssl/tls (目前暂未实现)
 - uv 专门测试 libuv/luauv 模块（即 uv 包）
-- windows 专门测试 Windows 环境
 
 
 

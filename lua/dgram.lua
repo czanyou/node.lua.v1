@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014-2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,37 +17,24 @@ limitations under the License.
 
 --]]
 local meta = { }
-meta.name        = "luvit/dgram"
+meta.name        = "lnode/dgram"
 meta.version     = "1.1.0-3"
 meta.license     = "Apache 2"
-meta.homepage    = "https://github.com/luvit/luvit/blob/master/deps/dgram.lua"
-meta.description = "Node-style udp module for luvit"
-meta.tags        = { "luvit", "dgram", "udp" }
+meta.description = "Node-style udp module for lnode"
+meta.tags        = { "lnode", "dgram", "udp" }
 
 local exports = { meta = meta }
 
-local uv      = require('uv')
-local Emitter = require('core').Emitter
+local core    = require('core')
 local timer   = require('timer')
+local uv      = require('uv')
 
-local function start_listening(self)
-    uv.udp_recv_start(self._handle, function(err, msg, rinfo, flags)
-        timer.active(self)
-        if err then
-            self:emit('error', err)
-        else
-            if msg then
-                self:emit('message', msg, rinfo, flags)
-            end
-        end
-    end )
-end
+-------------------------------------------------------------------------------
+-- Socket
 
-local function stop_listening(self)
-    return uv.udp_recv_stop(self._handle)
-end
+local Socket = core.Emitter:extend()
+exports.Socket = Socket
 
-local Socket = Emitter:extend()
 function Socket:initialize(type, callback)
     self._handle = uv.new_udp()
     if callback then
@@ -54,9 +42,74 @@ function Socket:initialize(type, callback)
     end
 end
 
-Socket.recvStart = start_listening
+function Socket:address()
+    return uv.udp_getsockname(self._handle)
+end
 
-Socket.recvStop = stop_listening
+function Socket:bind(port, address, callback)
+    local ret, err = uv.udp_bind(self._handle, address, port)
+    if (err) then
+        self:emit('error', err)
+        return nil, err
+    end
+
+    self:recvStart()
+
+    if (callback) then
+        callback()
+    end
+
+    self:emit('listening')
+    return ret
+end
+
+function Socket:close(callback)
+    timer.unenroll(self)
+    if not self._handle then
+        return
+    end
+
+    self:recvStop()
+    uv.close(self._handle, callback)
+    self._handle = nil
+end
+
+function Socket:recvStart()
+    uv.udp_recv_start(self._handle, function(err, msg, rinfo, flags)
+        timer.active(self)
+        if err then
+            self:emit('error', err)
+
+        elseif msg then
+            self:emit('message', msg, rinfo, flags)
+        end
+    end )
+end
+
+function Socket:recvStop()
+    return uv.udp_recv_stop(self._handle)
+end
+
+function Socket:send(data, port, host, callback)
+    timer.active(self)
+    return uv.udp_send(self._handle, data, host, port, callback)
+end
+
+function Socket:setBroadcast(status)
+    return uv.udp_set_broadcast(self._handle, status)
+end
+
+function Socket:setMulticastInterface(interfaceAddress)
+    return uv.udp_set_multicast_interface(self._handle, interfaceAddress)
+end
+
+function Socket:setMulticastLoop(on)
+    return uv.udp_set_multicast_loop(self._handle, on)
+end
+
+function Socket:setMulticastTTL(ttl)
+    return uv.udp_set_multicast_ttl(self._handle, ttl)
+end
 
 function Socket:setTimeout(msecs, callback)
     if msecs > 0 then
@@ -65,37 +118,25 @@ function Socket:setTimeout(msecs, callback)
         if callback then
             self:once('timeout', callback)
         end
+        
     elseif msecs == 0 then
         timer.unenroll(self)
     end
 end
 
-function Socket:send(data, port, host, callback)
-    timer.active(self)
-    uv.udp_send(self._handle, data, host, port, callback)
+function Socket:setTTL(ttl)
+    uv.udp_set_ttl(self._handle, ttl)
 end
 
-function Socket:bind(port, host, options)
-    uv.udp_bind(self._handle, host, port, options)
-    self:recvStart()
+-- ==
+-- Membership
+
+function Socket:addMembership(multicastAddress, interfaceAddress)
+    return self:setMembership(multicastAddress, interfaceAddress, 'join')
 end
 
-function Socket:close(callback)
-    timer.unenroll(self)
-    if not self._handle then
-        return
-    end
-    self:recvStop()
-    uv.close(self._handle, callback)
-    self._handle = nil
-end
-
-function Socket:address()
-    return uv.udp_getsockname(self._handle)
-end
-
-function Socket:setBroadcast(status)
-    uv.udp_set_broadcast(self._handle, status)
+function Socket:dropMembership(multicastAddress, interfaceAddress)
+    return self:setMembership(multicastAddress, interfaceAddress, 'leave')
 end
 
 function Socket:setMembership(multicastAddress, multicastInterface, op)
@@ -110,29 +151,21 @@ function Socket:setMembership(multicastAddress, multicastInterface, op)
             multicastInterface = '::0'
         end
     end
-    return uv.udp_set_membership(self._handle, multicastAddress, multicastInterface, op)
+
+    local ret, err = uv.udp_set_membership(self._handle, multicastAddress, multicastInterface, op)
+    if (err) then
+        self:emit('error', err)
+    end
+    return ret
 end
 
-function Socket:addMembership(multicastAddress, interfaceAddress)
-    return self:setMembership(multicastAddress, interfaceAddress, 'join')
-end
+-------------------------------------------------------------------------------
 
-function Socket:dropMembership(multicastAddress, interfaceAddress)
-    return self:setMembership(multicastAddress, interfaceAddress, 'leave')
-end
-
-function Socket:setTTL(ttl)
-    uv.udp_set_ttl(self._handle, ttl)
-end
-
-local function createSocket(type, callback)
+function exports.createSocket(type, callback)
     local ret = Socket:new(type, callback)
     ret._family = type
     return ret
 end
-
-exports.Socket = Socket
-exports.createSocket = createSocket
 
 return exports;
 

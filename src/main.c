@@ -1,5 +1,5 @@
-/*
- *  Copyright 2014 The Luvit Authors. All Rights Reserved.
+/**
+ *  Copyright 2016 The Node.lua Authors. All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,79 +16,214 @@
  */
 #include "lnode.h"
 
-static void lnode_print_version (void) {
-  	char buffer[250];
+/** Prints the current lnode version information. */
+static void lnode_print_version(int flags) {
+  	char buffer[PATH_MAX];
   	memset(buffer, 0, sizeof(buffer));
-  	sprintf(buffer, "Node.lua %s.%s.%s Copyright (C) 2015 ChengZhen (libuv %s, %s).", 
+  	sprintf(buffer, "v%d.%d.%d (Lua %s.%s.%s, libuv %s, build %s %s)", 
+  		NODELUA_VERSION_MAJOR, NODELUA_VERSION_MINOR, NODELUA_VERSION_PATCH,
   		LUA_VERSION_MAJOR, LUA_VERSION_MINOR, LUA_VERSION_RELEASE, 
-  		uv_version_string(), __DATE__);
+  		uv_version_string(), __DATE__, __TIME__);
   	lua_writestring(buffer, strlen(buffer));
   	lua_writeline();
+
+  	sprintf(buffer, "\n"
+	  	"usage: lnode [options] [ -e script | script.lua [arguments]]\n"
+	  	"\n"
+  		"options:\n"
+		"\n"
+  		"  -d  run as daemon\n"
+  		"  -e  evaluate script\n"
+  		"  -l  print path information\n"
+  		"  -p  evaluate script and print result	\n"
+  		"  -r  module to preload\n"
+  		"  -v  print Node.lua version\n"
+  		"  -   load script from stdin\n"
+		"\n"
+		);
+
+	if (flags & 0x01) {
+		lua_writestring(buffer, strlen(buffer));
+		lua_writeline();
+	}
 }
 
-lua_State* lnode_vm_acquire() {
-  lua_State* L = luaL_newstate();
-  if (L == NULL) {
-    return L;
-  }
+static int lnode_print_info(lua_State* L) {
+  char script[] = 
+    "pcall(require, 'init')\n"
+    "local lnode = require('lnode')\n"
+    "print('NODE_LUA_ROOT:\\n' .. lnode.NODE_LUA_ROOT .. '\\n')\n"
+    "local path = string.gsub(package.path, ';', '\\n')"
+  	"print('package.path:\\n' .. path)\n"
+    "local cpath = string.gsub(package.cpath, ';', '\\n')"
+  	"print('package.cpath:\\n' .. cpath)\n"
+  	;
 
-  // Add in the lua standard libraries
-  luaL_openlibs(L);
-
-  // Add in the lua ext libraries
-  lnode_openlibs(L);
-
-  // load init module
-  lnode_init(L);
-
-  return L;
+  return lnode_call_script(L, script, "info.lua");
 }
 
-void lnode_vm_release(lua_State* L) {
-  lua_close(L);
+/**
+ * Note that a Lua virtual machine can only be run in a single thread, 
+ * creating a new virtual machine for each new thread created.
+ * This method runs at the beginning of each thread to create new Lua 
+ * virtual machines and register the associated built-in modules.
+ */
+static lua_State* lnode_vm_acquire() {
+	lua_State* L = luaL_newstate();
+	if (L == NULL) {
+		return L;
+	}
+
+	luaL_openlibs(L);	// Add in the lua standard libraries
+	lnode_openlibs(L);	// Add in the lnode lua ext libraries
+	lnode_init(L);
+
+	return L;
+}
+
+/**
+ * Call this method at the end of each thread to close the relevant Lua 
+ * virtual machine and release the associated resources.
+ */
+static void lnode_vm_release(lua_State* L) {
+  	lua_close(L);
 }
 
 int main(int argc, char* argv[]) {
-	lua_State* L = NULL;
-	int index = 0;
-	int res = 0;
-	int script = 1;
-	int has_script = 0;
+	lua_State* L 	= NULL;
+	int index 		= 0;
+	int res 		= 0;
+	int script 		= 1;
+	int has_eval	= 0;
+	int has_info	= 0;
+	int has_print	= 0;
+	int has_script 	= 0;
+	int has_require	= 0;
 
+#ifndef _WIN32
+	signal(SIGPIPE, SIG_IGN);	// 13) 管道破裂: Write a pipe that does not have a read port
+
+#endif
+	
 	// Hooks in libuv that need to be done in main.
 	argv = uv_setup_args(argc, argv);
 
 	if (argc >= 2) {
-		if (strcmp(argv[1], "-d") == 0) {
+		const char* option = argv[1];
+
+		if (strcmp(option, "-d") == 0) {
+			// Runs the current script in the background
 			lnode_run_as_deamon();
 			script = 2;
 
-		} else if (strcmp(argv[1], "-") == 0) {
+		} else if (strcmp(option, "-l") == 0) {
+			has_info = 1;
+
+		} else if (strcmp(option, "-e") == 0) {
+			script = 2;
+			has_eval = 1;
+
+		} else if (strcmp(option, "-p") == 0) {
+			script = 2;
+			has_print = 1;
+
+		} else if (strcmp(option, "-r") == 0) {
+			script = 2;
+			has_require = 1;
+
+		} else if (strcmp(option, "-v") == 0) {
+			lnode_print_version(0);
+			return 0;		
+
+		} else if (strcmp(option, "-") == 0) {
+			// Read Lua script content from the pipeline
 			script = 2;
 			has_script = 1;
+
+		} else if (option[0] == '-') {
+			script = 2;
 		}
 	}
 
-	char* filename = NULL;
+	// filename
+	const char* filename = NULL;
 	if ((script > 0) && (script < argc)) {
 		filename = argv[script];
 		has_script = 1;
 	}
 
+	char realname[PATH_MAX];
+	memset(realname, 0, PATH_MAX);
+
 	// Create the lua state.
-	L = lnode_vm_acquire();
+	L = luaL_newstate();
 	if (L == NULL) {
 		fprintf(stderr, "luaL_newstate has failed\n");
 		return 1;
 	}
 
-	luv_set_thread_cb(lnode_vm_acquire, lnode_vm_release);
+	luaL_openlibs(L);  	// Add in the lua standard libraries
+	lnode_openlibs(L); 	// Add in the lua ext libraries
+	lnode_create_arg_table(L, argv, argc, script);
 
-	if (has_script) {
-		res = lnode_load_script(L, filename, argc, argv, script);
+	luv_set_thread_cb(lnode_vm_acquire, lnode_vm_release);
+	lnode_init(L);
+
+	if (has_info) {
+		lnode_print_info(L);
+
+	} else if (has_eval) {
+		if (filename) {
+			res = lnode_call_script(L, filename, "eval.lua");
+		}
+
+	} else if (has_print) {
+		if (filename) {
+			snprintf(realname, PATH_MAX, "print(%s)", filename);
+			res = lnode_call_script(L, realname, "print.lua");
+		}
+		
+	} else if (has_require) {
+		if (filename) {
+			snprintf(realname, PATH_MAX, "require('%s')", filename);
+			res = lnode_call_script(L, realname, "require.lua");
+		}
+
+	} else if (has_script) {
+		lnode_init(L);
+
+		filename = lnode_get_realpath(filename, realname);
+		if (filename) {
+			const char* fmt = 
+				"pcall(require, 'init')\n"
+				"dofile('%s')\n"
+				//"local fn = loadfile('%s')\n"
+				//"if (fn) then fn(...) end\n"
+				"pcall(run_loop)\n"
+				"process:emit('exit')\n";
+			int length = strlen(fmt) + strlen(filename) + 32;
+			char* buffer = malloc(length);
+			snprintf(buffer, length, fmt, filename);
+			res = lnode_call_script(L, buffer, filename);
+			free(buffer);
+			buffer = NULL;
+
+		} else { // load stdio 
+			const char* buffer = 
+				"pcall(require, 'init')\n"
+				"dofile()\n"
+				//"local fn = loadfile()\n"
+				//"if (fn) then fn(...) end\n"
+				"pcall(run_loop)\n"
+				"process:emit('exit')\n";
+			res = lnode_call_script(L, buffer, "main.lua");
+		}
+
+		// res = lnode_call_file(L, filename);
+		// printf("ret=%d\r\n", res);
 
 	} else {
-		lnode_print_version();
+		lnode_print_version(1);
 	}
 
 	lnode_vm_release(L);

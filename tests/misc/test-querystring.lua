@@ -1,6 +1,6 @@
-local qs = require('querystring')
-local deepEqual = require('utils').deep_equal
-local pprint = require('utils').pprint
+local qs        = require('querystring')
+local assert    = require('assert')
+local deepEqual = assert.isDeepEqual
 
 require('ext/tap')(function(test)
   -- Basic code coverage
@@ -13,16 +13,18 @@ require('ext/tap')(function(test)
     {'f>u+u>f', 'f>u+u>f', {u='f', f='u'}, '+', '>'},
   }
 
+  test('escape', function(expect)
+      local ret = qs.escape("test我的")
+      --console.log(ret)
+      assert.equal(ret, "test%E6%88%91%E7%9A%84")
+  end) 
+
   test('parse', function(expect)
     for num, test in ipairs(tests) do
       local input = test[1]
       local output = test[3]
       local tokens = qs.parse(input, test[4], test[5])
-      if not deepEqual(output, tokens) then
-        p("Expected", output)
-        p("But got", tokens)
-        error("Test failed: " .. input)
-      end
+      deepEqual(output, tokens)
     end
   end)
 
@@ -31,14 +33,13 @@ require('ext/tap')(function(test)
       local input  = test[3]
       local output = test[2]
       local str = qs.stringify(input, test[4], test[5])
-
-      --pprint('str', str, input, test[4], test[5])
-
-      if not deepEqual(qs.parse(output, test[4]), qs.parse(str, test[4])) then
-        p("Expected", output)
-        p("But got", str)
-        error("Test #" .. num .. " failed")
-      end
+      deepEqual(qs.parse(output, test[4]), qs.parse(str, test[4]))
     end
   end)
+
+  test('unescape', function(expect)
+      local ret = qs.unescape("test+%30%E6%88%91%E7%9A%84")
+      --console.log(ret)
+      assert.equal(ret, "test 0我的")
+  end) 
 end)

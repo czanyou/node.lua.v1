@@ -1,11 +1,32 @@
+# Log
 
+## 2017/1/20
 
-# 2016/4/29
+- Significant refactoring, all app directories removed .app suffix, vision.lua directory refactoring, removed the vision prefix.
 
-- libuv 更新到 1.9.0
-- 添加部分 API 的文档
-- 添加对 hi3516a 的支持
-- 更新 system lua 搜索路径, 从 '/system/lib/lua/5.3' 和 '/system/app/lua/5.3' 统一为 '/system/app/lua', 并且 Node.lua 的 lua 目录改为链接到 '/system/app/lua/lnode', 这样使搜索相对更加简单
-- 添加当前目录 lua 目录到搜索路径中
-- 删除 samples 目录, 因为很多内容已过时, 避免误导
-- 修正在 Linux 64 位系统下编译的问题
+## 2016/11/22
+
+- Added support for naming management
+
+## 2016/6/14
+
+- Simplified Lua core library, delete some of the basic functions
+
+## 2016/6/1
+
+- Update the Lua package search path from '/system/app/lua' to '/system/node/lua'
+
+## 2016/5/29
+
+- Update Windows installation method
+- Add a wrapper script under Windows
+
+## 2016/4/29
+
+- libuv updated to 1.9.0
+- Add some API documentation
+- Added support for the hi3516a
+- Update the Lua package search path from '/system/lib/lua/5.3' and '/system/app/lua/5.3' to '/system/app/lua', and the lua directory of Node.lua to link To '/system/app/lua/lnode', so that the search is relatively simple
+- Add the Lua directory in the current directory to the package search path
+- Remove the samples directory, because many of the content is obsolete, to avoid misleading
+- Fixed in the Linux 64-bit system compiler problems

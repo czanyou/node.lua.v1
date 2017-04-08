@@ -1,19 +1,20 @@
 local thread = require('thread')
-local fs = require('fs')
-local pprint = require("utils").pprint
+local fs     = require('fs')
+local pprint = console.pprint
 
 require('ext/tap')(function(test)
   test('main', function()
-    local pprint = require("utils").pprint
+    local pprint = console.pprint
 
     pprint('main:',thread.self())
   end)
 
   test('thread', function()
     local thr = thread.start(function(a,b,c)
-      local pprint = require("utils").pprint
-      local thread = require'thread'
-      local fs = require'fs'
+      local pprint = console.pprint
+      local thread = require('thread')
+      local fs     = require('fs')
+
       assert(a+b==c)
       print(string.format('%d+%d=%d',a,b,c))
       pprint('child',thread.self())
@@ -34,7 +35,7 @@ require('ext/tap')(function(test)
   test('threadpool', function()
     local work = thread.work(
       function(n)
-        local thread = require'thread'
+        local thread = require('thread')
 
         local self = tostring(thread.self())
         return self, n, n*n

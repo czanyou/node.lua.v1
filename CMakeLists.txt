@@ -1,161 +1,97 @@
 cmake_minimum_required(VERSION 2.8)
 
-# LUV Project Name 项目名称
-project (Node.lua C ASM)
+# Project Name
+project (Node.lua C)
 
-# LUV Version Code 版本号
-set(LUV_VERSION_MAJOR 1)
-set(LUV_VERSION_MINOR 7)
-set(LUV_VERSION_PATCH 1)
-set(LUV_VERSION       ${LUV_VERSION_MAJOR}.${LUV_VERSION_MINOR}.${LUV_VERSION_PATCH})
+# Project Version Code
+set(NODELUA_VERSION_MAJOR 0)
+set(NODELUA_VERSION_MINOR 8)
+set(NODELUA_VERSION_PATCH 15)
 
-# Add share object flags
-set(GNU_FLAGS "-fPIC")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GNU_FLAGS}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GNU_FLAGS}")
+set(NODELUA_VERSION       ${NODELUA_VERSION_MAJOR}.${NODELUA_VERSION_MINOR}.${NODELUA_VERSION_PATCH})
+add_definitions(-DNODELUA_VERSION_MAJOR=${NODELUA_VERSION_MAJOR})
+add_definitions(-DNODELUA_VERSION_MINOR=${NODELUA_VERSION_MINOR})
+add_definitions(-DNODELUA_VERSION_PATCH=${NODELUA_VERSION_PATCH})
 
-###############################################################################
-# Build Options
-
-option(BUILD_MODULE      "Build as module"      ON)
-option(BOARD_TYPE        "Board type"           local)
-option(BUILD_SHARED_LIBS "Build shared library" OFF)
-option(LUA_BUILD_TYPE    "Build type"           Static)
-option(WITH_LUA_ENGINE   "Lua Engine type"      Lua)
+message(STATUS "Build: NODELUA_VERSION=${NODELUA_VERSION}  ")
 
 ###############################################################################
 # Build Options
 
-# LuaJIT/Lua Build
-if (NOT WITH_LUA_ENGINE)
-  set(WITH_LUA_ENGINE "Lua"
-    CACHE STRING "Link to LuaJIT or PUC Lua" FORCE)
-  set_property(CACHE WITH_LUA_ENGINE
-    PROPERTY STRINGS  "Lua;LuaJIT")
-endif ()
+set(CMAKE_MACOSX_RPATH 0)
 
-# lib build type
-if (NOT BUILD_SHARED_LIBS)
-  set(BUILD_SHARED_LIBS OFF)
-endif ()
-
-# BOARD_TYPE
+# Development board type
 if (NOT BOARD_TYPE)
   set(BOARD_TYPE local)
 endif ()
 
-# Lua build mode
-if (NOT LUA_BUILD_TYPE)
-  set(LUA_BUILD_TYPE "Static"
-    CACHE STRING "Build Lua/LuaJIT as static, dynamic libary, or use system one" FORCE)
-  set_property(CACHE LUA_BUILD_TYPE PROPERTY STRINGS  "Static;Dynamic;System")
+# Build lnode execute
+option(BUILD_MBED_TLS   "Build with MbedTLS" OFF)
+option(BUILD_SQLITE     "Build with sqlite" OFF)
+
+set(BUILD_LNODE_EXE     ON)
+set(BUILD_SQLITE        ON)
+set(WITH_SHARED_LUA     OFF)
+
+# Linux
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+  set(LINUX ON)
 endif ()
 
-###############################################################################
-# 交叉编译选项, 通过 BOARD_TYPE 参数确定编译工具链
-
-MESSAGE(STATUS "Build: BOARD_TYPE=${BOARD_TYPE}  ")
-if (BOARD_TYPE STREQUAL hi3518)
-  MESSAGE(STATUS "Build: Use arm-hisiv100nptl-linux-gcc")
-  set(CMAKE_C_COMPILER "arm-hisiv100nptl-linux-gcc")
-  set(BUILD_SHARED_LIBS ON)
-
-elseif (BOARD_TYPE STREQUAL hi3516c)
-  MESSAGE(STATUS "Build: Use arm-hisiv100nptl-linux-gcc")
-  set(CMAKE_C_COMPILER "arm-hisiv100nptl-linux-gcc")
-  set(BUILD_SHARED_LIBS ON)
-  
-elseif (BOARD_TYPE STREQUAL hi3516a)
-  MESSAGE(STATUS "Build: Use arm-hisiv300-linux")
-  set(CMAKE_C_COMPILER "arm-hisiv300-linux-gcc")
-  set(BUILD_SHARED_LIBS ON)  
-
-else ()
-  MESSAGE(STATUS "Build: Use local gcc")
-  if("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-    set(BUILD_SHARED_LIBS ON)
-  endif ()
-
-endif ()
-
-###############################################################################
-# Lua 
-
-# WITH_SHARED_LUA ON/OFF
-if (LUA_BUILD_TYPE STREQUAL Static)
-  set(WITH_SHARED_LUA OFF)
-else ()
-  set(WITH_SHARED_LUA ON)
-endif ()
-
+# Lua module build type (Shared|Static)
 if (WIN32)
   set(WITH_SHARED_LUA ON)
-else ()
-  add_definitions(-DLUA_USE_POSIX)  
-  add_definitions(-DLUA_USE_DLOPEN)
 endif ()
 
 ###############################################################################
-# 子模块
+# Cross compiler options
+# determine the parameters of the compiler tool chain through BOARD_TYPE
 
-include(deps/libuv.cmake)
-include(deps/luauv.cmake)
-include(deps/luajson.cmake)
-include(deps/luazip.cmake)
-include(deps/luautils.cmake)
-include(deps/lua.cmake)
+# Meida.lua path
+string(REPLACE "node.lua" "media.lua" "MEDIA_LUA_PATH" "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# include directories
+if (BOARD_TYPE STREQUAL hi3518)
+  set(CMAKE_C_COMPILER "arm-hisiv100nptl-linux-gcc")
+
+elseif (BOARD_TYPE STREQUAL hi3516a)
+  # Must install 32bit c++ lib on 64bit linux:
+  # sudo apt-get install lib32stdc++6 lib32z1 -y
+  set(CMAKE_C_COMPILER "arm-hisiv300-linux-gcc")
+
+elseif (BOARD_TYPE STREQUAL mt7688)
+  set(CMAKE_C_COMPILER "mipsel-openwrt-linux-gcc")
+
+elseif (BOARD_TYPE STREQUAL xcode)
+  set(WITH_SHARED_LUA OFF)
+  set(BUILD_LNODE_EXE OFF)
+  message(STATUS "Build: xcode")
+endif ()
+
+###############################################################################
+
+message(STATUS "Build: BOARD_TYPE=${BOARD_TYPE}")
+message(STATUS "Build: WITH_SHARED_LUA=${WITH_SHARED_LUA}")
+message(STATUS "Build: BUILD_LNODE_EXE=${BUILD_LNODE_EXE} ")
+message(STATUS "Build: BUILD_MBED_TLS=${BUILD_MBED_TLS} ")
+message(STATUS "Build: BUILD_SQLITE=${BUILD_SQLITE} ")
+message(STATUS "Build: CC=${CMAKE_C_COMPILER}")
+
+# Include directories
 include_directories(deps/lua/src)
 
-# link directories
-link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build)
-
 ###############################################################################
-# 编译单独的执行文件, 只需单个文件就可以运行
-
-# lnode
-add_executable(lnode src/main.c src/lnode.c)
-target_link_libraries(lnode luazip luajson luautils luauv lualib)
-
-
-###############################################################################
-# 编译相关的动态链接库和主执行文件, 方便某些平台动态库依赖比较复杂的情况下使用
-# 主要功能全都封装在 luanode.so 文件中, 主执行文件只是个外壳
-
-# lshell & luanode.so
-if (BUILD_SHARED_LIBS)
-  MESSAGE(STATUS "Build: BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}  ")
-
-  add_library(luanode SHARED src/lnode.c)
-  target_link_libraries(luanode luazip luajson luautils luauv lualib)
-
-  #add_executable(lshell src/main.c)
-  #target_link_libraries(lshell luanode)
-endif()
-
-###############################################################################
-# APPLE
-
-if(APPLE)
-  set(CMAKE_SHARED_MODULE_CREATE_C_FLAGS
-    "${CMAKE_SHARED_MODULE_CREATE_C_FLAGS} -flat_namespace -undefined suppress"
-  )
-endif()
-
-###############################################################################
-# luauv
+# OS build options
 
 if (WIN32)
-  add_definitions("/wd4819")
-  add_definitions("/wd4996")
-  add_definitions("/wd4244")
-  add_definitions("/wd4005")
-endif ()
+  set(BUILD_MBED_TLS      ON)
 
-if (WIN32)
+  add_definitions("/wd4005" "/wd4244" "/wd4819" "/wd4996")
+
+  # see `deps/lua/src/luaconf.h`
   add_definitions(-DLUA_BUILD_AS_DLL -DLUA_LIB)
-  target_link_libraries(luauv uv)
+
+  #add_definitions(-DLUA_USE_NODE=1)
+  add_definitions(-DNODE_LUA_ROOT="!")
 
   # replace /MD to /MT to avoid link msvcr*.dll
   set(CompilerFlags
@@ -167,14 +103,75 @@ if (WIN32)
   foreach(CompilerFlag ${CompilerFlags})
     string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
   endforeach()
-  
-elseif("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-  target_link_libraries(luauv uv rt)
 
-else()
-  target_link_libraries(luauv uv)
+elseif (APPLE)
+  # see `deps/lua/src/luaconf.h`
+  add_definitions(-DNODE_LUA_ROOT="/usr/local/lnode")
+  add_definitions(-DLUA_USE_POSIX -DLUA_USE_DLOPEN)
+  add_definitions(-DLUA_USE_LMEDIA -DLUA_USE_LSQLITE)
 
-endif()
+  set(BUILD_SQLITE ON)
 
+  link_directories(${MEDIA_LUA_PATH}/build/local/)
 
-MESSAGE(STATUS "Build: Init Done")
+  set(CMAKE_SHARED_MODULE_CREATE_C_FLAGS
+    "${CMAKE_SHARED_MODULE_CREATE_C_FLAGS} -bundle -flat_namespace -undefined suppress"
+  )
+
+elseif (LINUX)
+
+  # Add share object flags
+  # Under 64bit Linux, you must add -fPIC option to compile a dynamic link library
+  add_definitions("-fPIC")
+
+  # Retain function names, etc., to facilitate dlopen or debugging
+  add_definitions("-rdynamic")
+
+  # see `deps/lua/src/luaconf.h`
+  add_definitions(-DLUA_USE_POSIX -DLUA_USE_DLOPEN)  
+  add_definitions(-DNODE_LUA_ROOT="/usr/local/lnode")
+
+endif ()
+
+###############################################################################
+# Include submodules
+
+include(deps/libuv.cmake)
+include(deps/lua.cmake)
+include(deps/luajson.cmake)
+include(deps/luautils.cmake)
+include(deps/luauv.cmake)
+include(deps/luazip.cmake)
+
+if (BUILD_SQLITE)
+    include(libs/lsqlite.cmake)
+endif ()
+
+if (BUILD_MBED_TLS)
+    include(libs/lmbedtls.cmake)
+endif ()
+
+###############################################################################
+# lnode execute 
+
+if (BUILD_LNODE_EXE) 
+  add_executable(lnode src/main.c src/lnode.c)
+
+  target_link_libraries(lualib luazip luajson luautils luauv uv)
+  target_link_libraries(lnode lualib)
+
+  if (APPLE)
+    target_link_libraries(lnode lmedia lsqlite sml faad)
+
+  elseif (LINUX)
+    target_link_libraries(lnode dl m rt)
+
+  endif ()
+endif ()
+
+###############################################################################
+# Install:
+
+file (WRITE build/version ${NODELUA_VERSION})
+
+message(STATUS "Build: Init done")

@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,58 +17,58 @@ limitations under the License.
 
 --]]
 
---- luvit thread management
+--- lnode thread management
 
 local meta = { }
-meta.name       = "luvit/thread"
-meta.version    = "0.1.2"
-meta.license    = "Apache 2"
-meta.homepage   = "https://github.com/luvit/luvit/blob/master/deps/thread.lua"
-meta.description = "thread module for luvit"
-meta.tags       = { "luvit", "thread", "threadpool", "work" }
+meta.name        = "lnode/thread"
+meta.version     = "0.1.2"
+meta.license     = "Apache 2"
+meta.description = "thread module for lnode"
+meta.tags        = { "lnode", "thread", "threadpool", "work" }
 
 local exports = { meta = meta }
 
 local uv = require('uv')
 local Object = require('core').Object
 
----============================================================================
---- luvit thread
+-------------------------------------------------------------------------------
+--- lnode thread
 
-exports.start = function(thread_func, ...)
-    local dumped = type(thread_func) == 'function'
-        and string.dump(thread_func) or thread_func
+exports.equal = uv.thread_equal
 
-        -- print('dumped:' .. dumped)
+exports.join  = uv.thread_join
 
-    local function thread_entry(dumped, ...)
-        -- Run function with require injected
-        local fn = load(dumped)
-        fn(...)
-
-        -- Start new event loop for thread.
-        require('uv').run()
-    end
-
-    return uv.new_thread(thread_entry, dumped, ...)
-end
-
-exports.join = function(thread)
-    return uv.thread_join(thread)
-end
-
-exports.equals = function(thread1, thread2)
-    return uv.thread_equals(thread1, thread2)
-end
-
-exports.self = function()
-    return uv.thread_self()
-end
+exports.self  = uv.thread_self
 
 exports.sleep = uv.sleep
 
----============================================================================
---- luvit threadpool
+function exports.start(thread_func, ...)
+    local dumped = thread_func
+    if (type(thread_func) == 'function') then
+        dumped = string.dump(thread_func)
+    end
+    
+    -- print('dumped:' .. dumped)
+    local _thread_entry = function(dumped, ...)
+        pcall(require, 'init')
+
+        -- Run function with require injected
+        local fn = load(dumped)
+        if (fn) then
+            fn(...)
+        end
+
+        -- Start new event loop for thread.
+        local uv = require('uv')
+        uv.run()
+        uv.loop_close()
+    end
+
+    return uv.new_thread(_thread_entry, dumped, ...)
+end
+
+-------------------------------------------------------------------------------
+--- lnode threadpool
 
 local Worker = Object:extend()
 
@@ -75,15 +76,17 @@ function Worker:queue(...)
     uv.queue_work(self.handler, self.dumped, ...)
 end
 
-exports.work = function(thread_func, notify_entry)
+function exports.work(thread_func, callback)
     local worker = Worker:new()
     worker.dumped = type(thread_func) == 'function'
         and string.dump(thread_func) or thread_func
 
-    local function thread_entry(dumped, ...)
+    local function _thread_func(dumped, ...)
         if not _G._uv_works then
             _G._uv_works = { }
         end
+
+        pcall(require, 'init')
 
         -- try to find cached function entry
         local fn
@@ -92,6 +95,7 @@ exports.work = function(thread_func, notify_entry)
 
             -- cache it
             _G._uv_works[dumped] = fn
+            
         else
             fn = _G._uv_works[dumped]
         end
@@ -100,11 +104,15 @@ exports.work = function(thread_func, notify_entry)
         return fn(...)
     end
 
-    worker.handler = uv.new_work(thread_entry, notify_entry)
+    if type(callback) ~= 'function' then
+        callback = function() end
+    end
+
+    worker.handler = uv.new_work(_thread_func, callback)
     return worker
 end
 
-exports.queue = function(worker, ...)
+function exports.queue(worker, ...)
     worker:queue(...)
 end
 

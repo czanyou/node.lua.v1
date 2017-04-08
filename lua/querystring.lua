@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,36 +23,24 @@ the following methods:
 
 --]]
 local meta = { }
-meta.name       = "luvit/querystring"
+meta.name       = "lnode/querystring"
 meta.version    = "1.0.2"
 meta.license    = "Apache 2"
-meta.homepage   = "https://github.com/luvit/luvit/blob/master/deps/querystring.lua"
-meta.description = "Node-style query-string codec for luvit"
-meta.tags       = { "luvit", "url", "codec" }
+meta.description = "Node-style query-string codec for lnode"
+meta.tags       = { "lnode", "url", "codec" }
 
 local exports = { meta = meta }
 
 --[[
-The unescape function used by querystring.parse, provided so that it could be 
-overridden if necessary.
+The querystring.escape() method performs URL percent-encoding on the given str 
+in a manner that is optimized for the specific requirements of URL query strings.
 
-It will try to use decodeURIComponent in the first place, but if that fails it 
-falls back to a safer equivalent that doesn't throw on malformed URLs.
+The querystring.escape() method is used by querystring.stringify() and is 
+generally not expected to be used directly. It is exported primarily to allow 
+application code to provide a replacement percent-encoding implementation if 
+necessary by assigning querystring.escape to an alternative function.
 --]]
-function exports.urldecode(str)
-    str = str:gsub('+', ' ')
-    str = str:gsub('%%(%x%x)', function(h)
-        return string.char(tonumber(h, 16))
-    end )
-    str = str:gsub('\r\n', '\n')
-    return str
-end
-
---[[
-The escape function used by querystring.stringify, provided so that it could be 
-overridden if necessary.
---]]
-function exports.urlencode(str)
+function exports.escape(str)
     if str then
         str = str:gsub('\n', '\r\n')
         str = str:gsub('([^%w])', function(c)
@@ -59,37 +48,6 @@ function exports.urlencode(str)
         end )
     end
     return str
-end
-
-local function stringifyPrimitive(v)
-    return tostring(v)
-end
-
---[[
-Serialize an object to a query string. Optionally override the default separator 
-('&') and assignment ('=') characters.
-
-Options object may contain encodeURIComponent property (querystring.escape by 
-default), it can be used to encode string with non-utf8 encoding if necessary.
---]]
-function exports.stringify(params, sep, eq)
-    if not sep then sep = '&' end
-    if not eq then eq = '=' end
-    if type(params) == "table" then
-        local fields = { }
-        for key, value in pairs(params) do
-            local keyString = exports.urlencode(stringifyPrimitive(key)) .. eq
-            if type(value) == "table" then
-                for _, v in ipairs(value) do
-                    table.insert(fields, keyString .. exports.urlencode(stringifyPrimitive(v)))
-                end
-            else
-                table.insert(fields, keyString .. exports.urlencode(stringifyPrimitive(value)))
-            end
-        end
-        return table.concat(fields, sep)
-    end
-    return ''
 end
 
 --[[
@@ -104,31 +62,113 @@ be used to limit processed keys. Set it to 0 to remove key count limitation.
 Options object may contain decodeURIComponent property (querystring.unescape 
 by default), it can be used to decode a non-utf8 encoding string if necessary.
 --]]
-function exports.parse(str, sep, eq)
+function exports.parse(str, sep, eq, options)
+    if (not str) then
+        return nil
+    end
+
     if not sep then sep = '&' end
-    if not eq then eq = '=' end
-    local vars = { }
+    if not eq  then eq  = '=' end
     str = tostring(str)
+
+    local maxKeys  = 1000
+    local unescape = exports.unescape
+    if (options) then
+        unescape = options.decodeURIComponent or unescape
+        maxKeys  = options.maxKeys or maxKeys
+    end
+
+    local index = 0
+    local vars = { }
     for pair in str:gmatch('[^' .. sep .. ']+') do
+        index = index + 1
+        if (maxKeys > 0) and (index > maxKeys) then
+            break
+        end
+
         if not pair:find(eq) then
-            vars[exports.urldecode(pair)] = ''
+            vars[unescape(pair)] = ''
+
         else
             local key, value = pair:match('([^' .. eq .. ']*)' .. eq .. '(.*)')
             if key then
-                key = exports.urldecode(key)
-                value = exports.urldecode(value)
-                local type = type(vars[key])
-                if type == 'nil' then
+                key   = unescape(key:trim())
+                value = unescape(value)
+                local valueType = type(vars[key])
+                if valueType == 'nil' then
                     vars[key] = value
-                elseif type == 'table' then
+
+                elseif valueType == 'table' then
                     table.insert(vars[key], value)
+
                 else
                     vars[key] = { vars[key], value }
                 end
             end
         end
     end
+
     return vars
 end
 
-return exports;
+--[[
+Serialize an object to a query string. Optionally override the default separator 
+('&') and assignment ('=') characters.
+
+Options object may contain encodeURIComponent property (querystring.escape by 
+default), it can be used to encode string with non-utf8 encoding if necessary.
+--]]
+function exports.stringify(params, sep, eq, options)
+    if (not params) or (type(params) ~= "table") then
+        return ''
+    end
+
+    if not sep then sep = '&' end
+    if not eq  then eq  = '=' end
+
+    local escape = exports.escape
+    if (options) then
+        escape = options.encodeURIComponent or escape 
+    end
+
+    local fields = { }
+    for key, value in pairs(params) do
+        local keyString = escape(tostring(key)) .. eq
+        if type(value) == "table" then
+            for _, v in ipairs(value) do
+                table.insert(fields, keyString .. escape(tostring(v)))
+            end
+        else
+            table.insert(fields, keyString .. escape(tostring(value)))
+        end
+    end
+    return table.concat(fields, sep)
+end
+
+--[[
+The querystring.unescape() method performs decoding of URL percent-encoded 
+characters on the given str.
+
+The querystring.unescape() method is used by querystring.parse() and is 
+generally not expected to be used directly. It is exported primarily to allow 
+application code to provide a replacement decoding implementation if necessary 
+by assigning querystring.unescape to an alternative function.
+
+--]]
+function exports.unescape(str)
+    if (not str) then
+        return str
+    end
+    
+    str = str:gsub('+', ' ')
+    str = str:gsub('%%(%x%x)', function(h)
+        return string.char(tonumber(h, 16))
+    end )
+    str = str:gsub('\r\n', '\n')
+    return str
+end
+
+exports.urlencode = exports.escape
+exports.urldecode = exports.unescape
+
+return exports

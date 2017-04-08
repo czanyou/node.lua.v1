@@ -1,6 +1,6 @@
 require('ext/tap')(function (test)
 
-  local path = require('path')
+  local path  = require('path')
   local spawn = require('child_process').spawn
   local timer = require('timer')
 
@@ -10,11 +10,12 @@ require('ext/tap')(function (test)
     local childPath = path.join(__dirname, 'fixtures', 'parent-process-nonpersistent.lua')
     local persistentPid = -1
 
-    if os.type() == 'win32' then
+    if os.platform() == 'win32' then
       return
     end
 
-    local child = spawn(process.argv[0], { childPath })
+    local argv = process.argv
+    local child = spawn(argv[0], { childPath })
     child.stdout:on('data', function(data)
       persistentPid = tonumber(data)
     end)
@@ -35,4 +36,5 @@ require('ext/tap')(function (test)
     end)
   --]]
   end)
+  
 end)

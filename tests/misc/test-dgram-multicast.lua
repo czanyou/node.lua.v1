@@ -19,34 +19,32 @@ limitations under the License.
 require('init')
 
 require('ext/tap')(function (test)
-  local dgram = require('dgram')
+    local dgram = require('dgram')
 
-  local PORT = process.env.PORT or 10081
-  local HOST = '0.0.0.0'
+    local PORT = process.env.PORT or 10081
+    local HOST = '0.0.0.0'
 
-  test("tls dgram multicast", function()
-    local s1 = dgram.createSocket('udp4')
-    local s2 = dgram.createSocket('udp4')
+    test("tls dgram multicast", function()
+        local s1 = dgram.createSocket('udp4')
+        local s2 = dgram.createSocket('udp4')
 
-    s2:on('message', function(msg, rinfo)
-      assert(#msg == 5)
-      assert(msg == 'HELLO')
-      s2:close()
-      s1:close()
+        s2:on('message', function(msg, rinfo)
+            assert(#msg == 5)
+            assert(msg == 'HELLO')
+            s2:close()
+            s1:close()
+        end)
+
+        print('PORT', PORT)
+        s2:bind(PORT + 1, HOST)
+        s1:bind(PORT, HOST)
+
+        assert(s2:addMembership('239.255.0.1'))
+
+        s1:send('HELLO', PORT + 1, '127.0.0.1')
+
+        run_loop()
+        s1:close()
+        s2:close()
     end)
-
-    print('PORT',PORT)
-    s2:bind(PORT+1,HOST)
-    s1:bind(PORT,HOST)
-
-    assert(s2:addMembership('239.255.0.1'))
-
-    s1:send('HELLO', PORT+1, '127.0.0.1')
-
-    run_loop()
-    s1:close()
-    s2:close()
-
-    
-  end)
 end)

@@ -1,7 +1,9 @@
-copy lnode.exe C:\windows
+@echo -
+@echo - Please execute make.bat build the project before installation.
+@echo - 
 
-lnode.exe install.lua
+@set PATH=%CD%\bin;%PATH%
 
-pause
+@lnode.exe install.lua
 
-cmd
+@pause

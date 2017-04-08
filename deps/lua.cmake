@@ -1,12 +1,4 @@
-# Modfied from luajit.cmake
-# Added LUAJIT_ADD_EXECUTABLE Ryan Phillips <ryan at trolocsis.com>
-# This CMakeLists.txt has been first taken from LuaDist
-# Copyright (C) 2007-2011 LuaDist.
-# Created by Peter Drahoš
-# Redistribution and use of this file is allowed according to the terms of the MIT license.
-# Debugged and (now seriously) modified by Ronan Collobert, for Torch7
-
-#project(Lua53 C)
+cmake_minimum_required(VERSION 2.8)
 
 set(LUA_DIR ${CMAKE_CURRENT_LIST_DIR}/lua)
 
@@ -33,21 +25,6 @@ if(SIZEOF_VOID_P EQUAL 8)
 endif()
 
 # libs
-if(NOT WIN32)
-  FIND_LIBRARY(DL_LIBRARY "dl")
-  if(DL_LIBRARY)
-    set(CMAKE_REQUIRED_LIBRARIES ${DL_LIBRARY})
-    list(APPEND LIBS ${DL_LIBRARY})
-  endif(DL_LIBRARY)
-  CHECK_FUNCTION_EXISTS(dlopen LUA_USE_DLOPEN)
-  if(NOT LUA_USE_DLOPEN)
-    MESSAGE(FATAL_ERROR "Cannot compile a useful lua.
-Function dlopen() seems not to be supported on your platform.
-Apparently you are not on a Windows platform as well.
-So lua has no way to deal with shared libraries!")
-  endif(NOT LUA_USE_DLOPEN)
-endif(NOT WIN32)
-
 check_library_exists(m sin "" LUA_USE_LIBM)
 if ( LUA_USE_LIBM )
   list ( APPEND LIBS m )

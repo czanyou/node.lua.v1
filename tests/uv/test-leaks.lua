@@ -1,4 +1,6 @@
-return require('ext/tap')(function (test)
+local tap     = require('ext/tap')
+
+return tap(function (test)
 
   local function bench(uv, p, count, fn)
     collectgarbage()
@@ -17,10 +19,10 @@ return require('ext/tap')(function (test)
     uv.run()
     collectgarbage()
     local after = uv.resident_set_memory()
-    p{
+    p({
       before = before,
       after = after,
-    }
+    })
     assert(after < before * 1.5)
   end
 
@@ -93,14 +95,14 @@ return require('ext/tap')(function (test)
         assert(not err, err)
       end)
 
-      assert(uv.fs_open("README.md", "r", mode, onOpen))
+      assert(uv.fs_open("run.lua", "r", mode, onOpen))
     end)
   end)
 
   test("reading file sync", function (print, p, expect, uv)
     local mode = tonumber("644", 8)
     bench(uv, p, 0x200, function ()
-      local fd = assert(uv.fs_open("README.md", "r", mode))
+      local fd = assert(uv.fs_open("run.lua", "r", mode))
       local stat = assert(uv.fs_fstat(fd))
       local data = assert(uv.fs_read(fd, stat.size, 0))
       assert(#data == stat.size)

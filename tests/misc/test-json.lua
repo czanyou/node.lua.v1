@@ -16,66 +16,82 @@ limitations under the License.
 
 --]]
 
---local JSON = require('json')
-local deepEqual = require('utils').deep_equal
+--local json = require('json')
+local deepEqual = require('assert').isDeepEqual
 
-local JSON = require('json')
+local json  = require('json')
+local cjson = require('cjson')
 
 require('ext/tap')(function(test)
   test('smoke', function()
-    assert(JSON.stringify({a = 'a'}) == '{"a":"a"}')
-    assert(deepEqual({a = 'a'}, JSON.parse('{"a":"a"}')))
+    assert(json.stringify({a = 'a'}) == '{"a":"a"}')
+    deepEqual({a = 'a'}, json.parse('{"a":"a"}'))
+
   end)
   test('parse invalid json', function()
     for _, x in ipairs({ '', ' ', '{', '[', '{"f":', '{"f":1', '{"f":1', }) do
-      local status, _, result = pcall(JSON.parse, x)
+      local status, _, result = pcall(json.parse, x)
       assert(status)
       assert(result)
     end
     for _, x in ipairs({ '{]', '[}', }) do
-      local status, _, result = pcall(JSON.parse, x)
+      local status, _, result = pcall(json.parse, x)
       assert(status)
       assert(result)
     end
   end)
   test('parse valid json', function()
     for _, x in ipairs({ '[]', '{}', }) do
-      local _, result = pcall(JSON.parse, x)
+      local _, result = pcall(json.parse, x)
       assert(type(result) == 'table')
     end
   end)
   test('stringify', function()
-    assert(JSON.stringify() == 'null')
+    assert(json.stringify() == 'null')
     for _, x in ipairs({ {}, {1, 2, 3}, {a = 'a'}, 'string', 0, 0.1, 3.1415926, true, false, }) do
-      local status, result = pcall(JSON.stringify, x)
+      local status, result = pcall(json.stringify, x)
       assert(status)
       assert(type(result) == 'string')
     end
   end)
   test('edge cases', function()
-    print('JSON.stringify({})', JSON.stringify({}));
+    print('json.stringify({})', json.stringify({}));
 
-    assert(JSON.stringify({}) == '[]')
+    assert(json.stringify({}) == '[]')
 
     -- escaped strings
-    assert(JSON.stringify('a"b\tc\nd') == '"a\\"b\\tc\\nd"')
-    assert(JSON.parse('"a\\"b\\tc\\nd"') == 'a"b\tc\nd')
+    assert(json.stringify('a"b\tc\nd') == '"a\\"b\\tc\\nd"')
+    assert(json.parse('"a\\"b\\tc\\nd"') == 'a"b\tc\nd')
 
     -- booleans
-    assert(JSON.stringify(true) == 'true')
-    assert(JSON.stringify(false) == 'false')
-    assert(JSON.parse('true') == true)
-    assert(JSON.parse('false') == false)
+    assert(json.stringify(true) == 'true')
+    assert(json.stringify(false) == 'false')
+    assert(json.parse('true') == true)
+    assert(json.parse('false') == false)
   end)
   test('strict', function()
     for _, x in ipairs({ '{f:1}', "{'f':1}", }) do
-      local status, _, _ = pcall(JSON.parse, x)
+      local status, _, _ = pcall(json.parse, x)
       assert(status)
     end
   end)
   test('unicode', function()
-    local s = "{\"f\":\"„Åì„Çì„Å´„Å°„ÅØ ‰∏ñÁïå\"}"
-    local obj = JSON.parse(s)
-    assert(obj.f and obj.f == "„Åì„Çì„Å´„Å°„ÅØ ‰∏ñÁïå")
+    local s = "{\"f\":\"§≥§Û§À§¡§œ  ¿ΩÁ\"}"
+    local obj = json.parse(s)
+    assert(obj.f and obj.f == "§≥§Û§À§¡§œ  ¿ΩÁ")
+  end)
+  test('null', function()
+    --console.log(cjson)
+    --console.log(json)
+
+    local null = json.null
+    --console.log(json.null == cjson.null)
+
+    local array = {null, null, null, null, null}
+    --console.log(array)
+
+    local text = json.stringify(array)
+    console.log(text)
+
   end)
 end)

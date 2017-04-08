@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,24 +22,22 @@ This module is for various classes and utilities that don't need their own
 module.
 ]]
 local meta = { }
-meta.name        = "luvit/core"
+meta.name        = "lnode/core"
 meta.version     = "1.0.7"
 meta.license     = "Apache 2"
-meta.homepage    = "https://github.com/luvit/luvit/blob/master/deps/core.lua"
-meta.description = "Core object model for luvit using simple prototypes and inheritance."
-meta.tags        = { "luvit", "objects", "inheritance" }
+meta.description = "Core object model for lnode using simple prototypes and inheritance."
+meta.tags        = { "lnode", "objects", "inheritance" }
 
 local exports = { meta = meta }
-local core = exports
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 -- String 兼容 Javascript 扩展
 -- ~~~~~~~~~~~
 
 -- 把字符串分割为字符串数组。
 -- @param separator 必需。字符串或正则表达式，从该参数指定的地方分割 text
 -- String.split() 执行的操作与 Array.join 执行的操作是相反的
--- ~~~~~~~~~~~~~~~~~~~~~
+--
 function string.split(text, separator)  
     local startIndex = 1
     local splitIndex = 1
@@ -62,14 +61,12 @@ function string.split(text, separator)
     return array
 end
 
--- 字符串的长度
--- ~~~~~~~~~~
+-- 返回字符串的长度
 function string.length(text)
     return #text
 end
 
 -- 返回首尾不包含空白字符的字符串
--- ~~~~~~~~~~~~~~~~~~~~~~~~~
 function string.trim(text)
     return string.gsub(text, "^%s*(.-)%s*$", "%1")
 end
@@ -84,7 +81,7 @@ function string.endsWith(text, find)
     return not not string.find(text, find .. '$')
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 
 --[[
 Returns whether obj is instance of class or not.
@@ -107,39 +104,48 @@ Caveats: This function returns true for classes.
     assert(instanceof(Object, Object))
     assert(instanceof(Emitter, Object))
 ]]
-function core.instanceof(obj, class)
+function exports.instanceof(obj, class)
     if type(obj) ~= 'table' or obj.meta == nil or not class then
         return false
     end
+
     if obj.meta.__index == class then
         return true
     end
+
     local meta = obj.meta
     while meta do
         if meta.super == class then
             return true
+
         elseif meta.super == nil then
             return false
         end
+
         meta = meta.super.meta
     end
     return false
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 
 --[[
-This is the most basic object in Luvit. It provides simple prototypal
+This is the most basic object in Node.lua. It provides simple prototypal
 inheritance and inheritable constructors. All other objects inherit from this.
 ]]
 local Object = { }
-core.Object = Object
+
+exports.Object = Object
+
 Object.meta = { __index = Object }
 
 -- Create a new instance of this object
 function Object:create()
     local meta = rawget(self, "meta")
-    if not meta then error("Cannot inherit from instance object") end
+    if not meta then 
+        error("Cannot inherit from instance object") 
+    end
+
     return setmetatable( { }, meta)
 end
 
@@ -158,11 +164,11 @@ Creates a new instance and calls `obj:initialize(...)` if it exists.
     p(rect:getArea())
 ]]
 function Object:new(...)
-    local obj = self:create()
-    if type(obj.initialize) == "function" then
-        obj:initialize(...)
+    local instance = self:create()
+    if type(instance.initialize) == "function" then
+        instance:initialize(...)
     end
-    return obj
+    return instance
 end
 
 --[[
@@ -176,20 +182,20 @@ Creates a new sub-class.
 ]]
 
 function Object:extend()
-    local obj = self:create()
+    local subclass = self:create()
     local meta = { }
     -- move the meta methods defined in our ancestors meta into our own
     -- to preserve expected behavior in children (like __tostring, __add, etc)
     for k, v in pairs(self.meta) do
         meta[k] = v
     end
-    meta.__index = obj
+    meta.__index = subclass
     meta.super = self
-    obj.meta = meta
-    return obj
+    subclass.meta = meta
+    return subclass
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 
 --[[
 This class can be used directly whenever an event emitter is needed.
@@ -215,7 +221,7 @@ the beginning its parameter list.
     emitter:emit('end', 'a', 'b', 'c')
 ]]
 local Emitter = Object:extend()
-core.Emitter = Emitter
+exports.Emitter = Emitter
 
 -- By default, any error events that are not listened for should throw errors
 function Emitter:missingHandlerType(name, ...)
@@ -234,8 +240,9 @@ function Emitter:missingHandlerType(name, ...)
     end
 end
 
-local onceMeta = { }
-function onceMeta:__call(...)
+local EmitterOnceMeta = { }
+
+function EmitterOnceMeta:__call(...)
     self.emitter:removeListener(self.name, self)
     return self.callback(...)
 end
@@ -243,10 +250,10 @@ end
 -- Same as `Emitter:on` except it de-registers itself after the first event.
 function Emitter:once(name, callback)
     return self:on(name, setmetatable( {
-        emitter = self,
-        name = name,
+        emitter  = self,
+        name     = name,
         callback = callback
-    } , onceMeta))
+    } , EmitterOnceMeta))
 end
 
 -- Adds an event listener (`callback`) for the named event `name`.
@@ -256,6 +263,7 @@ function Emitter:on(name, callback)
         handlers = { }
         rawset(self, "handlers", handlers)
     end
+
     local handlers_for_type = rawget(handlers, name)
     if not handlers_for_type then
         if self.addHandlerType then
@@ -264,6 +272,7 @@ function Emitter:on(name, callback)
         handlers_for_type = { }
         rawset(handlers, name, handlers_for_type)
     end
+
     table.insert(handlers_for_type, callback)
     return self
 end
@@ -273,6 +282,7 @@ function Emitter:listenerCount(name)
     if not handlers then
         return 0
     end
+
     local handlers_for_type = rawget(handlers, name)
     if not handlers_for_type then
         return 0
@@ -294,15 +304,18 @@ function Emitter:emit(name, ...)
         self:missingHandlerType(name, ...)
         return
     end
+
     local handlers_for_type = rawget(handlers, name)
     if not handlers_for_type then
         self:missingHandlerType(name, ...)
         return
     end
+
     for i = 1, #handlers_for_type do
         local handler = handlers_for_type[i]
         if handler then handler(...) end
     end
+
     for i = #handlers_for_type, 1, -1 do
         if not handlers_for_type[i] then
             table.remove(handlers_for_type, i)
@@ -356,8 +369,9 @@ end
 function Emitter:listeners(name)
     local handlers = rawget(self, "handlers")
     if not handlers then
-        return 0
+        return { }
     end
+    
     local handlers_for_type = rawget(handlers, name)
     if not handlers_for_type then
         return { }
@@ -398,11 +412,12 @@ function Emitter:propagate(eventName, target)
     return self
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
+-- Error
 
 -- This is for code that wants structured error messages.
 local Error = Object:extend()
-core.Error = Error
+exports.Error = Error
 
 -- Make errors tostringable
 function Error.meta.__tostring(table)
@@ -416,47 +431,31 @@ function Error:initialize(message)
     end
 end
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 -- os
 
 local uv     = require('uv')
 local lutils = require('lutils')
 
-local map = {
-  ['Windows'] = 'win32',
-  ['Linux']   = 'linux',
-  ['Darwin']  = 'darwin',
-  ['NetBSD']  = 'bsd',
-  ['FreeBSD'] = 'bsd',
-  ['OpenBSD'] = 'bsd',
-  ['POSIX']   = 'posix',
-  ['Other']   = 'other'
-}
-
--- Returns the operating system name. For example 'Linux' on Linux, 
--- 'Darwin' on OS X and 'Windows_NT' on Windows.
-local function getType()
-    return map[lutils.os_platform()] or 'other'
-end
-
-local function getPlatform()
-    return map[lutils.os_platform()] or 'other'
-end
-
 -- A constant defining the appropriate End-of-line marker for the operating system.
-local function getEndOfLine()
+local function _getEndOfLine()
     local platform = lutils.os_platform()
-    if (platform == 'Windows') then
+    if (platform == 'win32') then
         return '\r\n'
     else 
         return '\n'
     end
 end
 
+if (not uv.os_tmpdir) then
+    uv.os_tmpdir = uv.os_homedir
+end
+
 os.arch               = lutils.os_arch          -- Returns the operating system CPU architecture. Possible values are 'x64', 'arm' and 'ia32'. Returns the value of process.arch.
 os.cpus               = uv.cpu_info             -- Returns an array of objects containing information about each CPU/core
 os.endianness         = nil                     -- Returns the endianness of the CPU. Possible values are 'BE' for big endian or 'LE' for little endian.
-os.EOL                = getEndOfLine()          -- A constant defining the appropriate End-of-line marker for the operating system.
+os.EOL                = _getEndOfLine()         -- A constant defining the appropriate End-of-line marker for the operating system.
+os.fork               = lutils.os_fork          -- 
 os.freemem            = uv.get_free_memory      -- Returns the amount of free system memory in bytes.
 os.homedir            = uv.os_homedir           -- Returns the home directory of the current user.
 os.hostname           = nil                     -- Returns the hostname of the operating system.
@@ -464,11 +463,11 @@ os.loadavg            = uv.loadavg              -- Returns an array containing t
 os.networkInterfaces  = uv.interface_addresses  -- Get a list of network interfaces:
 os.platform           = lutils.os_platform      -- Returns the operating system platform. Possible values are 'darwin', 'freebsd', 'linux', 'sunos' or 'win32'. Returns the value of process.platform.
 os.release            = nil                     -- Returns the operating system release.
-os.tmpdir             = nil                     -- Returns the operating system's default directory for temporary files.
+os.tmpdir             = uv.os_tmpdir()          -- Returns the operating system's default directory for temporary files.
 os.totalmem           = uv.get_total_memory     -- Returns the total amount of system memory in bytes.
-os.type               = getType                 -- Returns the operating system name.
+os.type               = lutils.os_platform      -- Returns the operating system name.
 os.uptime             = uv.uptime               -- Returns the system uptime in seconds.
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+-------------------------------------------------------------------------------
 
 return exports

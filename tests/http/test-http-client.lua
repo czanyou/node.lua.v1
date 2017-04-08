@@ -16,62 +16,66 @@ limitations under the License.
 
 --]]
 
-local test_url = 'http://home.sae.com.hk'
+local test_url = 'http://www.baidu.com'
 
 require('ext/tap')(function(test)
 
-  local fs = require('fs')
-  local http = require('http')
+    local fs = require('fs')
+    local http = require('http')
+    local path = require('path')
 
-  test("http-client", function(expect)
-    http.get(test_url, expect(function (res)
-      print(res.statusCode)
-      assert(res.statusCode == 200)
-      assert(res.httpVersion == '1.1')
-      res:on('data', function (chunk)
-        p("ondata", {chunk=#chunk})
-      end)
-      res:on('end', expect(function ()
-        p('stream ended')
-      end))
-    end))
-  end)
-
-  test("http-client (errors are bubbled)", function(expect)
-    local socket = http.get(test_url .. ':1234', function (res)
-      assert(false)
+    test("http-client", function(expect)
+        http.get(test_url, expect(function (res)
+          print(res.statusCode)
+          assert(res.statusCode == 200)
+          assert(res.httpVersion == '1.1')
+          res:on('data', function (chunk)
+              p("ondata", {chunk=#chunk})
+          end)
+          res:on('end', expect(function ()
+              p('stream ended')
+          end))
+        end))
     end)
-    socket:on('error',expect(function(err)
-      assert(not (err == nil))
-    end))
-  end)
 
-  test("http-client stream file", function(expect)
-    local port = 50010
-
-    local function interceptEmit(stream, logString)
-      local oldEmit = stream.emit
-      stream.emit = function(self, type, ...)
-        print(logString .. type)
-        return oldEmit(self, type, ...)
-      end
-    end
-
-    local server
-    server = http.createServer(function (req, res)
-      local f = fs.createReadStream(module.path)
-      interceptEmit(f, 'readable: ')
-      interceptEmit(res, 'response: ')
-      res:on('close', function() print('response: close(r)') server:destroy() end)
-      f:pipe(res)
-    end):listen(port, function()
-      print('Server running ' .. port)
-      http.get('http://127.0.0.1:' .. port, function (res)
-        res:on('data', p)
-        assert(res.statusCode == 200, 'validate status code')
-      end)
+    test("http-client (errors are bubbled)", function(expect)
+        local socket = http.get('http://127.0.0.1:1234', function (res)
+            assert(false)
+        end)
+        socket:on('error',expect(function(err)
+            assert(not (err == nil))
+        end))
     end)
-  end)
+
+    test("http-client stream file", function(expect)
+        local port = 50010
+
+        local function interceptEmit(stream, logString)
+            local oldEmit = stream.emit
+            stream.emit = function(self, type, ...)
+                print(logString .. ' emit ' .. type)
+                return oldEmit(self, type, ...)
+            end
+        end
+
+        local filename = path.join(process.cwd(), 'test-http-client.lua')
+
+        local server
+        server = http.createServer(function (req, res)
+            local fileInput = fs.createReadStream(filename)
+            interceptEmit(fileInput, 'readable: ')
+            interceptEmit(res, 'response: ')
+            res:on('close', function() print('response: close(r)') server:destroy() end)
+            fileInput:pipe(res)
+
+        end):listen(port, function()
+            print('Server running ' .. port)
+            http.get('http://127.0.0.1:' .. port, function (res)
+                res:on('data', function(data) print('data', #data) end)
+                assert(res.statusCode == 200, 'validate status code')
+            end)
+        end)
+    end)
 end)
 
 

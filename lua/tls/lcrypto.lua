@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014-2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +17,25 @@ limitations under the License.
 
 --]]
 --
-local _, openssl = pcall(require, 'openssl')
+local _, openssl = pcall(require, 'ssl')
+local ret, rng = pcall(require, 'lmbedtls.rng')
+local tls_rng = nil
 
 local function randomBytesOpenSSL(size, callback)
     local str = openssl.random(size)
+    if callback then
+        callback(nil, str)
+    end
+
+    return str
+end
+
+local function randomBytesMbedTLS(size, callback)
+    if (not tls_rng) then
+        tls_rng = rng.new()
+    end
+
+    local str = tls_rng:random(size)
     if callback then
         callback(nil, str)
     end
@@ -46,8 +62,17 @@ local exports = {}
 
 if type(openssl) == 'table' then
     exports.randomBytes = randomBytesOpenSSL
+
+elseif rng then
+    exports.randomBytes = randomBytesMbedTLS
+
 else
     exports.randomBytes = randomBytesInsecure
 end
+
+--[[
+console.log(openssl)
+console.log('random', randomBytesOpenSSL(64), 'test')
+--]]
 
 return exports

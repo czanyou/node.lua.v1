@@ -23,7 +23,7 @@ require('ext/tap')(function(test)
   local init  = require('init')
   local uv    = require('uv')
 
-  local is_windows = os.type() == 'win32'
+  local is_windows = os.platform() == 'win32'
   local __dirname = module.dir
 
   test('fs chmod', function(expect)

@@ -1,6 +1,7 @@
 --[[
 
 Copyright 2014-2015 The Luvit Authors. All Rights Reserved.
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,14 +19,14 @@ limitations under the License.
 
 local Object  = require('core').Object
 local Error   = require('core').Error
+local fs      = require('fs')
 local net     = require('net')
+local path    = require('path')
 local timer   = require('timer')
 local utils   = require('utils')
 local uv      = require('uv')
-local fs      = require('fs')
-local path    = require('path')
 
-local _, openssl = pcall(require, 'openssl')
+local _, openssl = pcall(require, 'ssl')
 
 local exports = {}
 local DEFAULT_CIPHERS = 'ECDHE-RSA-AES128-SHA256:AES128-GCM-SHA256:' .. -- TLS 1.2
@@ -59,12 +60,15 @@ if (module) then
 end
 
 -------------------------------------------------------------------------------
+-- Credential
 
 local Credential = Object:extend()
+
 function Credential:initialize(secureProtocol, defaultCiphers, flags, rejectUnauthorized, context)
     self.rejectUnauthorized = rejectUnauthorized
     if context then
         self.context = context
+
     else
         self.context = openssl.ssl.ctx_new(secureProtocol or 'TLSv1',
           defaultCiphers or DEFAULT_CIPHERS)
@@ -77,11 +81,15 @@ function Credential:addRootCerts()
     self.context:cert_store(exports.DEFAULT_CA_STORE)
 end
 
+--[[
+
+]]
 function Credential:setCA(certs)
     if not self.store then
         self.store = openssl.x509.store:new()
         self.context:cert_store(self.store)
     end
+
     if type(certs) == 'table' then
         for _, v in pairs(certs) do
             local cert = assert(openssl.x509.read(v))
@@ -102,19 +110,25 @@ end
 exports.Credential = Credential
 
 -------------------------------------------------------------------------------
+-- TLSSocket
+
+-- @event secureConnect
+-- @event OCSPResponse 
 
 local TLSSocket = net.Socket:extend()
+
 function TLSSocket:initialize(socket, options)
 
     if socket then
         net.Socket.initialize(self, { handle = socket._handle })
+
     else
         net.Socket.initialize(self)
     end
 
-    self.options = options
-    self.ctx = options.secureContext
-    self.server = options.isServer
+    self.options    = options
+    self.ctx        = options.secureContext
+    self.server     = options.isServer
     self.requestCert = options.requestCert
     self.rejectUnauthorized = options.rejectUnauthorized
 
@@ -125,13 +139,14 @@ function TLSSocket:initialize(socket, options)
     end
 
     self._connected = false
-    self.encrypted = true
-    self.readable = true
-    self.writable = true
+    self.encrypted  = true
+    self.readable   = true
+    self.writable   = true
 
     if self.server then
         self._connecting = false
         self:once('secure', utils.bind(self._verifyServer, self))
+
     else
         self._connecting = true
         self:once('secure', utils.bind(self._verifyClient, self))
@@ -166,6 +181,7 @@ function TLSSocket:_init()
     end
 end
 
+-- Returns an object representing the peer's certificate. 
 function TLSSocket:getPeerCertificate()
     return self.ssl:peer()
 end
@@ -174,6 +190,7 @@ function TLSSocket:_verifyClient()
     if self.ssl:session_reused() then
         self.sessionReused = true
         self:emit('secureConnection', self)
+
     else
         local verifyError, verifyResults
         self.ctx.session = self.ssl:session()
@@ -402,11 +419,11 @@ end
 exports.TLSSocket = TLSSocket
 
 -------------------------------------------------------------------------------
-local VERIFY_PEER = { "peer" }
-local VERIFY_PEER_FAIL = { "peer", "fail_if_no_peer_cert" }
-local VERIFY_NONE = { "none" }
+local VERIFY_PEER       = { "peer" }
+local VERIFY_PEER_FAIL  = { "peer", "fail_if_no_peer_cert" }
+local VERIFY_NONE       = { "none" }
 
-exports.createCredentials = function(options, context)
+function exports.createCredentials(options, context)
     local ctx, returnOne
 
     options = options or {}
@@ -449,3 +466,4 @@ exports.createCredentials = function(options, context)
 end
 
 return exports
+

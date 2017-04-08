@@ -1,29 +1,35 @@
-local init = require('init')
 local utils = require('utils')
 
-local pprint = utils.pprint
+require('ext/tap')(function(test)
+	
+  	test('string', function(expect)
 
-local data = ' \tab cd ef gh 1234 56\r\n '
+		local data = ' \tab cd ef gh 1234 56\r\n '
 
-pprint(data:find('cd'))
-pprint(data:find('12345'))
+		assert(data:find('cd') == 6)
+		assert(data:find('12345') == nil)
 
-pprint(data:length())
-pprint(data:split(' '))
-pprint(data:split(','))
-pprint(data:split())
-pprint(data:trim())
+		assert(data:length() == 24)
+		assert(#data:split(' ') == 8)
+		assert(#data:split(',') == 1)
+		assert(#data:split() == 8)
+		assert(data:trim() == 'ab cd ef gh 1234 56')
 
-pprint(data:startsWith(' \tab'))
-pprint(data:startsWith(' \tabc'))
-pprint(data:endsWith(' \tab'))
-pprint(data:endsWith('\r\n '))
+		assert(data:startsWith(' \tab'))
+		assert(not data:startsWith(' \tabc'))
+		assert(not data:endsWith(' \tab'))
+		assert(data:endsWith('\r\n '))
 
 
-local data2 = ' \t  \r\n '
-pprint(data2:trim())
+		local data2 = ' \t  \r\n '
+		--console.log('data2', data2:trim())
+		assert(data2:trim() == '')
 
-local script = string.dump(pprint)
-pprint(script)
+		--local script = string.dump(console.log)
+		--console.log(script)
+  	end)
+
+end)
+
 
 -- lnode test-string.lua

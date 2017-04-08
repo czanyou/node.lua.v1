@@ -18,10 +18,17 @@
 
 static luv_handle_t* luv_setup_handle(lua_State* L) {
   luv_handle_t* data;
-  const uv_handle_t* handle = *(void**)lua_touserdata(L, -1);
+  const uv_handle_t* handle;
+  void *udata;
+
+  if (!(udata = lua_touserdata(L, -1))) {
+    luaL_error(L, "NULL userdata");
+    return NULL;
+  }
+  handle = *(uv_handle_t**)udata;
   luaL_checktype(L, -1, LUA_TUSERDATA);
 
-  data = malloc(sizeof(*data));
+  data = (luv_handle_t*)malloc(sizeof(*data));
   if (!data) luaL_error(L, "Can't allocate luv handle");
 
   #define XX(uc, lc) case UV_##uc: \
@@ -80,8 +87,11 @@ static void luv_call_callback(lua_State* L, luv_handle_t* data, luv_callback_id 
     lua_pop(L, nargs);
   }
   else {
+    int errfunc = 0;
+
     // Get the traceback function in case of error
     lua_pushcfunction(L, traceback);
+    errfunc = lua_gettop(L);
     // And insert it before the args if there are any.
     if (nargs) {
       lua_insert(L, -1 - nargs);
@@ -93,7 +103,7 @@ static void luv_call_callback(lua_State* L, luv_handle_t* data, luv_callback_id 
       lua_insert(L, -1 - nargs);
     }
 
-    if (lua_pcall(L, nargs, 0, -2 - nargs)) {
+    if (lua_pcall(L, nargs, 0, errfunc)) {
       fprintf(stderr, "Uncaught Error: %s\n", lua_tostring(L, -1));
       exit(-1);
     }
@@ -102,13 +112,10 @@ static void luv_call_callback(lua_State* L, luv_handle_t* data, luv_callback_id 
   }
 }
 
-static void luv_cleanup_handle(lua_State* L, luv_handle_t* data) {
+static void luv_unref_handle(lua_State* L, luv_handle_t* data) {
   luaL_unref(L, LUA_REGISTRYINDEX, data->ref);
   luaL_unref(L, LUA_REGISTRYINDEX, data->callbacks[0]);
   luaL_unref(L, LUA_REGISTRYINDEX, data->callbacks[1]);
-  if (data->extra)
-    free(data->extra);
-  free(data);
 }
 
 static void luv_find_handle(lua_State* L, luv_handle_t* data) {

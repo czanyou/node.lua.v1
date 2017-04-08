@@ -1,17 +1,34 @@
+--[[
+
+Copyright 2016 The Node.lua Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS-IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+--]]
+
 local uv      = require('uv')
 local utils   = require('utils')
 
-local pprint    = utils.pprint
-local colorize  = utils.colorize
+local colorize  = console.colorize
 
 -- test
 _G.module       = {}
 _G.module.dir   = uv.cwd()
 _G.module.path  = uv.cwd()
-_G.p            = pprint
+_G.p            = console.log
 
--- protect
-local function protect(...)
+-- _print
+local function _print(...)
     local n = select('#', ...)
     local arguments = {...}
     for i = 1, n do
@@ -25,38 +42,41 @@ local function protect(...)
     return ...
 end
 
-local function pprotect(...)
+local function _pprint(...)
     local n = select('#', ...)
     local arguments = { ... }
 
     for i = 1, n do
-        arguments[i] = utils.dump(arguments[i])
+        arguments[i] = console.dump(arguments[i])
     end
 
-    return protect(table.concat(arguments, "\t"))
+    print(table.concat(arguments, "\t"))
+    return ...
 end
 
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
 
 local tests = {};
 
-local function run()
+local function _run_tests()
     local passed = 0
 
     if #tests < 1 then
         error("!!! No tests specified!")
+        return
     end
 
-    print(colorize("success", "### Test Suite with " .. #tests .. " Tests."))
+    print(colorize("success", "<<<< Test Suite with " .. #tests .. " Tests >>>>"))
+
     for i = 1, #tests do
         local test = tests[i]
 
-        print(colorize("highlight", "#### Runing Test " .. i .. "/" .. #tests .. " '" .. test.name .. "':"))
+        print(colorize("highlight", "#### Runing Test " .. i .. "/" .. #tests .. " '" .. test.name .. "' #### "))
 
         local cwd = uv.cwd()
         local pass, err = xpcall(function ()
             local expected = 0
-            local function expect(fn, count)
+            local function _expect(fn, count)
                 expected = expected + (count or 1)
                 return function (...)
                     expected = expected - 1
@@ -66,7 +86,7 @@ local function run()
                 end
             end
 
-            test.func(protect, pprotect, expect, uv)
+            test.func(_print, _pprint, _expect, uv)
 
             collectgarbage()
             uv.run()
@@ -98,21 +118,21 @@ local function run()
         uv.chdir(cwd)
 
         if pass then
-            print("==== Finish '" .. test.name .. "'.")
+            print("---- Finish '" .. test.name .. "'. ----\n")
             passed = passed + 1
 
         else
             print(err)
-            print("!!!! Failed '" .. test.name .. "'.")
+            print("!!!! Failed '" .. test.name .. "'. !!!!\n")
         end
     end -- end for i = 1, #tests do
 
     -- failed count
     local failed = #tests - passed
     if failed == 0 then
-        print("## All tests passed")
+        print(colorize("success", "### All tests passed ###"))
     else
-        print("##" .. failed .. " failed test" .. (failed == 1 and "" or "s"))
+        print(colorize("err", "### " .. failed .. " failed test" .. (failed == 1 and "" or "s") .. " ###"))
     end
 
     -- Close all then handles, including stdout
@@ -128,18 +148,20 @@ local prefix = nil
 
 local function tap(suite)
 
-    if type(suite) == "function" then
+    if (type(suite) == "function") then
         -- Pass in suite directly for single mode
-        suite(function (name, func) -- test function
+        local test = function (name, func) -- test function
             if prefix then
                 name = prefix .. ' - ' .. name
             end
 
             tests[#tests + 1] = { name = name, func = func }
-        end)
+        end
+
+        suite(test)
         prefix = nil
 
-    elseif type(suite) == "string" then
+    elseif (type(suite) == "string") then
         prefix = suite
         single = false
 
@@ -149,9 +171,10 @@ local function tap(suite)
         single = suite
     end
 
-    if single then run() end
+    if single then 
+        _run_tests() 
+    end
 end
-
 
 --[[
 -- Sample Usage
@@ -177,4 +200,35 @@ local passed, failed, total = tap(function (test)
 end)
 ]]
 
-return tap
+--return tap
+
+local exports = {}
+
+function exports.testAll(dirname)
+	package.path = package.path .. ';' .. dirname .. '/?.lua'
+
+	local req = uv.fs_scandir(dirname)
+
+	repeat
+		local name = uv.fs_scandir_next(req)
+		if not name then
+				-- run the tests!
+				tap(true)
+		end
+
+		local match = string.match(name, "^test%-(.*).lua$")
+		if match then
+				local path = "./test-" .. match
+				tap(match)
+				require(path)
+		end
+	until not name
+end
+
+setmetatable(exports, {
+    __call = function(self, ...)
+        return tap(...)
+    end    
+})
+
+return exports

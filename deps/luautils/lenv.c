@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014 The Luvit Authors. All Rights Reserved.
+ *  Copyright 2015 The Lnode Authors. All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -181,13 +181,30 @@ static int lenv_unset(lua_State* L) {
 // 
 
 #ifdef __APPLE__
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED
+// -- anyou
+#define __IOS__
+
+#else
+
 #include <crt_externs.h>
+
+#endif
+
 #define environ (*_NSGetEnviron())
 #elif !defined(_MSC_VER)
 extern char **environ;
 #endif
 
+#if TARGET_OS_IPHONE
+#endif
+
 static int lenv_keys(lua_State* L) {
+#ifdef __IOS__
+    return 0;
+    
+#else
 	unsigned int i, size = 0;
 	while (environ[size]) size++;
 
@@ -203,6 +220,7 @@ static int lenv_keys(lua_State* L) {
 	}
 
 	return 1;
+#endif
 }
 
 static int lenv_get(lua_State* L) {

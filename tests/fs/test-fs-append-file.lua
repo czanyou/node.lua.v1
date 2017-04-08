@@ -18,7 +18,7 @@ limitations under the License.
 
 local fs = require('fs')
 local join = require('path').join
-local pprint = require('utils').pprint
+local pprint = console.pprint
 local Buffer = require('buffer').Buffer
 
 local p = pprint
@@ -82,7 +82,7 @@ require('ext/tap')(function(test)
     local function onReadFile(e, buffer)
       assert(not e)
       p('file3 read')
-      assert(#buffer == buf.length + #currentFileData)
+      assert(#buffer == buf:length() + #currentFileData)
       fs.unlinkSync(filename3)
     end
     local function onAppendFile(e)

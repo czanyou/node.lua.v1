@@ -25,7 +25,7 @@ require('ext/tap')(function(test)
   local __filename = module.path
 
   test('fs utime', function()
-    local is_windows = os.type() == 'win32'
+    local is_windows = os.platform() == 'win32'
 
     local tests_ok = 0
     local tests_run = 0

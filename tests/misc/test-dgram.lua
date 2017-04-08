@@ -17,7 +17,7 @@ limitations under the License.
 --]]
 require('init')
 local dgram = require('dgram')
-local pprint = require('utils').pprint
+local pprint = console.pprint
 
 require('ext/tap')(function(test)
   test('test udp', function(expect)

@@ -54,6 +54,17 @@
 #define CJSON_VERSION   "2.1devel"
 #endif
 
+#ifdef _MSC_VER
+#define CJSON_EXPORT    __declspec(dllexport)
+#else
+#define CJSON_EXPORT    extern
+#endif
+
+#ifdef _MSC_VER
+int strcasecmp(const char *s1, const char *s2);
+int strncasecmp(const char *s1, const char *s2, register int n);
+#endif
+
 /* Workaround for Solaris platforms missing isinf() */
 #if !defined(isinf) && (defined(USE_INTERNAL_ISINF) || defined(MISSING_ISINF))
 #define isinf(x) (!isnan(x) && isnan((x) - (x)))
@@ -193,7 +204,7 @@ static json_config_t *json_fetch_config(lua_State *l)
 {
     json_config_t *cfg;
 
-    cfg = lua_touserdata(l, lua_upvalueindex(1));
+    cfg = (json_config_t *)lua_touserdata(l, lua_upvalueindex(1));
     if (!cfg)
         luaL_error(l, "BUG: Unable to fetch CJSON configuration");
 
@@ -360,7 +371,7 @@ static int json_destroy_config(lua_State *l)
 {
     json_config_t *cfg;
 
-    cfg = lua_touserdata(l, 1);
+    cfg = (json_config_t *)lua_touserdata(l, 1);
     if (cfg)
         strbuf_free(&cfg->encode_buf);
     cfg = NULL;
@@ -373,7 +384,7 @@ static void json_create_config(lua_State *l)
     json_config_t *cfg;
     int i;
 
-    cfg = lua_newuserdata(l, sizeof(*cfg));
+    cfg = (json_config_t *)lua_newuserdata(l, sizeof(*cfg));
 
     /* Create GC method to clean up strbuf */
     lua_newtable(l);
@@ -461,9 +472,9 @@ static void json_encode_exception(lua_State *l, json_config_t *cfg, strbuf_t *js
 static void json_append_string(lua_State *l, strbuf_t *json, int lindex)
 {
     const char *escstr;
-    int i;
     const char *str;
     size_t len;
+    size_t i;
 
     str = lua_tolstring(l, lindex, &len);
 
@@ -948,11 +959,6 @@ static void json_next_string_token(json_parse_t *json, json_token_t *token)
     token->value.string = strbuf_string(json->tmp, &token->string_len);
 }
 
-#ifdef _MSC_VER
-#define strcasecmp stricmp
-#define strncasecmp  strnicmp 
-#endif
-
 /* JSON numbers should take the following form:
  *      -?(0|[1-9]|[1-9][0-9]+)(.[0-9]+)?([eE][-+]?[0-9]+)?
  *
@@ -1355,15 +1361,15 @@ static int json_protect_conversion(lua_State *l)
 static int lua_cjson_new(lua_State *l)
 {
     luaL_Reg reg[] = {
-        { "encode", json_encode },
         { "decode", json_decode },
-        { "encode_sparse_array", json_cfg_encode_sparse_array },
-        { "encode_max_depth", json_cfg_encode_max_depth },
-        { "decode_max_depth", json_cfg_decode_max_depth },
-        { "encode_number_precision", json_cfg_encode_number_precision },
-        { "encode_keep_buffer", json_cfg_encode_keep_buffer },
-        { "encode_invalid_numbers", json_cfg_encode_invalid_numbers },
         { "decode_invalid_numbers", json_cfg_decode_invalid_numbers },
+        { "decode_max_depth", json_cfg_decode_max_depth },
+        { "encode", json_encode },
+        { "encode_invalid_numbers", json_cfg_encode_invalid_numbers },
+        { "encode_keep_buffer", json_cfg_encode_keep_buffer },
+        { "encode_max_depth", json_cfg_encode_max_depth },
+        { "encode_number_precision", json_cfg_encode_number_precision },
+        { "encode_sparse_array", json_cfg_encode_sparse_array },
         { "new", lua_cjson_new },
         { NULL, NULL }
     };
@@ -1384,9 +1390,9 @@ static int lua_cjson_new(lua_State *l)
 
     /* Set module name / version fields */
     lua_pushliteral(l, CJSON_MODNAME);
-    lua_setfield(l, -2, "_NAME");
+    lua_setfield(l, -2, "NAME");
     lua_pushliteral(l, CJSON_VERSION);
-    lua_setfield(l, -2, "_VERSION");
+    lua_setfield(l, -2, "VERSION");
 
     return 1;
 }
@@ -1412,7 +1418,7 @@ static int lua_cjson_safe_new(lua_State *l)
     return 1;
 }
 
-int luaopen_cjson(lua_State *l)
+CJSON_EXPORT int luaopen_cjson(lua_State *l)
 {
     lua_cjson_new(l);
 
@@ -1426,7 +1432,7 @@ int luaopen_cjson(lua_State *l)
     return 1;
 }
 
-int luaopen_cjson_safe(lua_State *l)
+CJSON_EXPORT int luaopen_cjson_safe(lua_State *l)
 {
     lua_cjson_safe_new(l);
 
