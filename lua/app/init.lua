@@ -67,9 +67,6 @@ local function getApplications(list, appPath)
 		return
 	end
 
-	local cols = { 12, 12, 48 }
-	local color = console.color
-
 	local index = 0
 	if (not files) then
 		return
@@ -379,6 +376,13 @@ function exports.execute(name, ...)
 	else
 		return executeApplication(name, ...)
 	end
+end
+
+function exports.getList()
+	local appPath = path.join(getAppPath())
+	local list = {}
+	getApplications(list, appPath)
+	return list
 end
 
 function exports.list()

@@ -5,6 +5,8 @@
 
 ## 概述
 
+A framework for Internet of Things
+
 Node.lua 是一个和 Node.js 类似的 Lua 运行环境. 
 
 Node.lua 的目的不是为了替代 Node.js, 而是为了在嵌入式设备等性能较低的硬件上也能使用类似 Node.js 的开发和运行环境.
@@ -13,15 +15,18 @@ Node.lua 的目的不是为了替代 Node.js, 而是为了在嵌入式设备等�
 
 主要缺点是相对 Javascript, 使用 Lua 语言的人比较少, 但好在 Lua 和 Javascript 非常相似, 熟悉后开发起来差别不大.
 
-## 目录定义
 
-- bin       可执行文件目录
+## 目录
+
+- bin       可执行文件
 - build     CMake 临时构建目录
-- deps      主程序依赖的 C 模块目录
-- docs      文档目录
-- lua       Lua 核心库源代码目录
-- src       主程序 C 语言源代码目录
-- tests     测试用例目录
+- deps      主程序依赖的 C 模块
+- docs      文档
+- libs      第三方扩展模块
+- lua       Lua 核心库源代码
+- src       lnode 主程序 C 语言源代码
+- tests     测试用例
+
 
 ### 根目录文件
 
@@ -29,14 +34,16 @@ Node.lua 的目的不是为了替代 Node.js, 而是为了在嵌入式设备等�
 - install.bat   Windows 下运行 install.lua 的批处理文件
 - install.lua   Windows 下开发和运行环境安装脚本
 - make.bat      Windows 下运行 CMake 的批处理文件
-- Makefile      Linux 下编译批处理文件
-- package.json  lnode Lua 核心库元数据配置文件
+- Makefile      非 Windows 下 Makefile
 - README.md     本说明文件
 
-### bin: 可执行文件目录
+
+### bin: 可执行文件
 
 - lpm           Lua Package Manager 主执行程序
 - lpm.bat       在 Windows 下执行 lpm 的批处理文件
+- recovery      Recovery 模式运行脚本
+
 
 ### deps: 依赖项目
 
@@ -60,9 +67,32 @@ Node.lua 主程序由 C 语言实现, 并且包含了 lua, libuv, miniz 等核�
 
 注意: 因为 lua 5.3 和 luajit 2 差别较大, 暂时不提供对 luajit 2 的支持.
 
-### lua: 类 node.js 的 Lua 核心库
+
+### docs: 文档
+
+API 说明文档 
+
+
+### libs: 第三方扩展库
+
+- sqlite sqlite3 模块, 实现本地数据库操作
+- mbedtls TLS 模块, 用于实现 TLS/HTTPS 协议
+
+
+### lua: Lua 核心库
 
 node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方法同样可以参考 node.js 的文档
+
+
+### src: lnode 主程序
+
+lnode 主程序入口函数代码
+
+
+### test: 测试用例
+
+用于单元测试
+
 
 ## 构建主程序
 
@@ -72,11 +102,13 @@ node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方�
 
 主程序源代码主要由 C 语言组成, 源文件目录为 `/src/`, 主函数所在文件是 `/src/main.c`, 其他模块都位于 `/deps/` 目录下. 
 
-主要采用 cmake 实现跨平台构建和编译代码, 编译前需先安装 cmake 相关软件
+主要采用 CMake 实现跨平台构建和编译代码, 编译前需先安装 CMake 相关软件
+
 
 ### Linux 下编译
 
 直接在项目根目录执行 make 即可.
+
 
 ### MacOS 下编译
 
@@ -87,13 +119,16 @@ node.lua 核心库，主要实现了和 node.js 相似的核心库，调用方�
     sudo mkdir -p /usr/local/bin
     sudo /Applications/CMake.app/Contents/bin/cmake-gui --install=/usr/local/bin
 
+
 ### Windows 下编译
 
 先安装 cmake 和 visual studio, 然后运行 make.bat, 将成生成 build/win32 目录 
 
+
 ### 交叉编译
 
 交叉编译 hi3518，先在 Linux 下安装 cmake 和 hi3518 工具链，然后运行 make hi3518, 将成生成 build/hi3518 目录 
+
 
 #### 其他平台交叉编译办法:
 
@@ -126,6 +161,7 @@ hi3518:
 
 如果未指定将默认采用开发机的编译环境和工具
 
+
 ### 生成文件
 
 最终将生成 lnode 可执行文件以及所需的动态链接库：
@@ -136,9 +172,11 @@ hi3518:
 
 - Windows 下: `bin/lnode.exe` 以及 `bin/lua53.dll`.
 
+
 ## Lua 开发和调试
 
 本节主要描述在编译好 lnode 主程序后如何开发和调试 lua 脚本。
+
 
 ### Windows 下开发和调试
 
@@ -147,6 +185,7 @@ hi3518:
 接着运行 `node.lua\install.bat`, 会将当前开发目录的 `node.lua\bin\` 和 `node.lua\lua\` 会注册到系统环境变量中.
 
 打开一个新的 cmd 窗口，执行 `lpm`, 如果运行成功则表示安装正确.
+
 
 ### Linux 下开发和调试
 
@@ -162,6 +201,7 @@ hi3518:
 上述脚本将复制上面生成的可执行文件到系统目录并添加需要的环境变量
 
 在系统命令行提示下执行: `lpm`, 如果有显示 lpm 的帮助信息, 则表示 Node.lua 开发环境安装成功
+
 
 ## 发布
 

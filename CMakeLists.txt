@@ -6,7 +6,7 @@ project (Node.lua C)
 # Project Version Code
 set(NODELUA_VERSION_MAJOR 0)
 set(NODELUA_VERSION_MINOR 8)
-set(NODELUA_VERSION_PATCH 15)
+set(NODELUA_VERSION_PATCH 16)
 
 set(NODELUA_VERSION       ${NODELUA_VERSION_MAJOR}.${NODELUA_VERSION_MINOR}.${NODELUA_VERSION_PATCH})
 add_definitions(-DNODELUA_VERSION_MAJOR=${NODELUA_VERSION_MAJOR})
@@ -26,8 +26,8 @@ if (NOT BOARD_TYPE)
 endif ()
 
 # Build lnode execute
-option(BUILD_MBED_TLS   "Build with MbedTLS" OFF)
-option(BUILD_SQLITE     "Build with sqlite" OFF)
+option(BUILD_MBED_TLS   "Build mbedtls module" OFF)
+option(BUILD_SQLITE     "Build sqlite3 module" OFF)
 
 set(BUILD_LNODE_EXE     ON)
 set(BUILD_SQLITE        ON)
@@ -59,7 +59,8 @@ elseif (BOARD_TYPE STREQUAL hi3516a)
   set(CMAKE_C_COMPILER "arm-hisiv300-linux-gcc")
 
 elseif (BOARD_TYPE STREQUAL mt7688)
-  set(CMAKE_C_COMPILER "mipsel-openwrt-linux-gcc")
+  #set(CMAKE_C_COMPILER "mipsel-openwrt-linux-gcc")
+  set(CMAKE_C_COMPILER "mips-openwrt-linux-gcc")
 
 elseif (BOARD_TYPE STREQUAL xcode)
   set(WITH_SHARED_LUA OFF)
@@ -106,11 +107,14 @@ if (WIN32)
 
 elseif (APPLE)
   # see `deps/lua/src/luaconf.h`
-  add_definitions(-DNODE_LUA_ROOT="/usr/local/lnode")
   add_definitions(-DLUA_USE_POSIX -DLUA_USE_DLOPEN)
-  add_definitions(-DLUA_USE_LMEDIA -DLUA_USE_LSQLITE)
+
+  add_definitions(-DNODE_LUA_ROOT="/usr/local/lnode")
+
+  add_definitions(-DLUA_USE_LMEDIA)
 
   set(BUILD_SQLITE ON)
+  add_definitions(-DLUA_USE_LSQLITE)
 
   link_directories(${MEDIA_LUA_PATH}/build/local/)
 
@@ -143,6 +147,10 @@ include(deps/luautils.cmake)
 include(deps/luauv.cmake)
 include(deps/luazip.cmake)
 
+
+###############################################################################
+# modules
+
 if (BUILD_SQLITE)
     include(libs/lsqlite.cmake)
 endif ()
@@ -150,6 +158,7 @@ endif ()
 if (BUILD_MBED_TLS)
     include(libs/lmbedtls.cmake)
 endif ()
+
 
 ###############################################################################
 # lnode execute 
@@ -169,9 +178,8 @@ if (BUILD_LNODE_EXE)
   endif ()
 endif ()
 
+
 ###############################################################################
 # Install:
 
 file (WRITE build/version ${NODELUA_VERSION})
-
-message(STATUS "Build: Init done")

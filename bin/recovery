@@ -1,0 +1,6 @@
+#!/usr/bin/env lnode
+
+local upgrade 	 = require('ext/upgrade')
+local updatefile = '/usr/local/lnode/update/update.zip'
+local destpath   = '/usr/local/lnode'
+upgrade.install(updatefile, destpath)

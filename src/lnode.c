@@ -39,17 +39,19 @@
 #define WITH_LUTILS       1
 #define WITH_MINIZ        1
 
-LUALIB_API int luaopen_cjson        (lua_State * const L);
-LUALIB_API int luaopen_env          (lua_State * const L);
-LUALIB_API int luaopen_lhttp_parser (lua_State * const L);
-LUALIB_API int luaopen_lmessage     (lua_State * const L);
-LUALIB_API int luaopen_lutils       (lua_State * const L);
-LUALIB_API int luaopen_miniz        (lua_State * const L);
-LUALIB_API int luaopen_lmedia       (lua_State * const L);
-LUALIB_API int luaopen_lsqlite      (lua_State * const L);
+LUALIB_API int luaopen_cjson        (lua_State* const L);
+LUALIB_API int luaopen_env          (lua_State* const L);
+LUALIB_API int luaopen_lhttp_parser (lua_State* const L);
+LUALIB_API int luaopen_lmessage     (lua_State* const L);
+LUALIB_API int luaopen_lutils       (lua_State* const L);
+LUALIB_API int luaopen_miniz        (lua_State* const L);
 
-LUALIB_API int luaopen_lmedia_ts_reader(lua_State * const L);
-LUALIB_API int luaopen_lmedia_ts_writer(lua_State * const L);
+
+LUALIB_API int luaopen_lsqlite      (lua_State* const L);
+LUALIB_API int luaopen_lmedia       (lua_State* const L);
+LUALIB_API int luaopen_lmedia_ts_reader(lua_State* const L);
+LUALIB_API int luaopen_lmedia_ts_writer(lua_State* const L);
+
 
 static int lua_table_set(lua_State *L, const char* key, const char* value)
 {

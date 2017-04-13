@@ -88,7 +88,7 @@ set(SOURCES
     ${MBEDTLS_DIR}/lua/rng.c
     ${MBEDTLS_DIR}/lua/x509_crl.c
     ${MBEDTLS_DIR}/lua/x509_csr.c 
-#    ${MBEDTLS_DIR}/lua/lauxhlib.c
+    ${MBEDTLS_DIR}/lua/tls.c
 )
 
 if (WIN32)

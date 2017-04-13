@@ -102,6 +102,9 @@ uninstall:
 	@echo 'Remove all installed files'
 	sudo rm -rf ${LOCAL_BIN_PATH}/lnode
 	sudo rm -rf ${LOCAL_BIN_PATH}/lpm
+	sudo rm -rf ${NODE_ROOTPATH}/bin/lsqlite.so
+	sudo rm -rf ${NODE_ROOTPATH}/bin/lmbedtls.so
+
 	sudo rm -rf ${NODE_ROOTPATH}/lua
 	@echo 'Removing done.'
-	@echo ''	
+	@echo ''

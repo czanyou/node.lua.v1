@@ -24,33 +24,36 @@
  *  Created by Masatoshi Teruya on 16/02/06.
  */
 
-
 #ifndef mbedtls_lua_h
 #define mbedtls_lua_h
 
 #include <string.h>
 #include <errno.h>
+
 // lualib
 #include "config.h"
+
 // utilities
 #include "hexcodec.h"
 #include "lauxhlib.h"
+
 // mbedtls headers
+#include "mbedtls/certs.h"
+#include "mbedtls/cipher.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/debug.h"
+#include "mbedtls/entropy.h"
 #include "mbedtls/error.h"
 #include "mbedtls/md.h"
 #include "mbedtls/md5.h"
-#include "mbedtls/sha1.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/ripemd160.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/sha256.h"
 #include "mbedtls/sha512.h"
-#include "mbedtls/ripemd160.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/cipher.h"
-#include "mbedtls/pk.h"
+#include "mbedtls/ssl.h"
 #include "mbedtls/x509_crl.h"
 #include "mbedtls/x509_csr.h"
-
 
 #define TOSTRING_MT(L,tname) lua_pushfstring( L, tname ": %p", lua_touserdata( L, 1 ) );
 
@@ -105,6 +108,15 @@ typedef struct {
     mbedtls_ctr_drbg_context drbg;
     mbedtls_entropy_context entropy;
 } lmbedtls_rng_t;
+
+
+typedef struct {
+    mbedtls_entropy_context  entropy;
+    mbedtls_ctr_drbg_context drbg;
+    mbedtls_ssl_context      ssl_context;
+    mbedtls_ssl_config       ssl_conf;
+    mbedtls_x509_crt         cacert;
+} lmbedtls_tls_t;
 
 
 // define prototypes
